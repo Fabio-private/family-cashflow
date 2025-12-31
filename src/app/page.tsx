@@ -73,7 +73,7 @@ export default function Home() {
             <div className="dashboard-container">
                 <div className="mb-12">
                     <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 mb-2">
-                        News in Tavola
+                        News in Tavola <small className="text-[8px] opacity-0">V5</small>
                     </h1>
                     <div className="flex items-center gap-3">
                         <p className="text-gray-500 font-medium">
