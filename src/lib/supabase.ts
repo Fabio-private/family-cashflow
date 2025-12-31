@@ -15,8 +15,10 @@ const isValidUrl = (url: string | undefined): url is string => {
 if (!isValidUrl(supabaseUrl) || !supabaseAnonKey) {
   console.warn(
     '⚠️ Supabase configuration is invalid or missing.\n' +
-    'Check your .env.local file for NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.'
+    'Check your .env.local (or Vercel Settings) for NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.'
   );
+} else {
+  console.log('✅ Supabase environment variables detected.');
 }
 
 // We use a fallback that looks like a URL to prevent the 'Invalid supabaseUrl' crash during build/init

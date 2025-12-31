@@ -22,6 +22,7 @@ export default function Home() {
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
     const [news, setNews] = useState<NewsItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     useEffect(() => {
         async function fetchNews() {
@@ -81,6 +82,12 @@ export default function Home() {
                 />
 
                 <div className="mt-8">
+                    {errorMessage && (
+                        <div className="mb-8 p-4 bg-red-50 border border-red-100 rounded-lg text-red-700 text-sm font-medium">
+                            <h4 className="font-bold mb-1">Avviso di Sistema:</h4>
+                            {errorMessage}
+                        </div>
+                    )}
                     {isLoading ? (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             {[1, 2, 3, 4].map((i) => (

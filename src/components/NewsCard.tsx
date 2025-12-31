@@ -17,18 +17,19 @@ export function NewsCard({ news }: { news: NewsItem }) {
     const isMediumScoring = news.ranking_score >= 5 && news.ranking_score < 8;
 
     const scoreColor = isHighScoring
-        ? "bg-accent-green"
+        ? "bg-[#47b27b]"
         : isMediumScoring
-            ? "bg-accent-orange"
-            : "bg-gray-300";
+            ? "bg-orange-400"
+            : "bg-gray-200";
 
     const getCategoryColor = (category?: string) => {
         if (!category) return "bg-gray-100 text-gray-600 border-gray-100";
         const cat = category.toLowerCase();
         if (cat.includes('tech') || cat.includes('innovazione')) return "bg-blue-50 text-blue-600 border-blue-100";
-        if (cat.includes('green') || cat.includes('sostenibilit') || cat.includes('climate')) return "bg-emerald-50 text-emerald-600 border-emerald-100";
+        if (cat.includes('green') || cat.includes('sostenibilit') || cat.includes('climate')) return "bg-[#47b27b]/10 text-[#47b27b] border-[#47b27b]/20";
         if (cat.includes('food') || cat.includes('prodotto')) return "bg-orange-50 text-orange-600 border-orange-100";
         if (cat.includes('mercato') || cat.includes('economia')) return "bg-purple-50 text-purple-600 border-purple-100";
+        if (cat.includes('blog') || cat.includes('news')) return "bg-[#d31049]/10 text-[#d31049] border-[#d31049]/20";
         return "bg-gray-50 text-gray-500 border-gray-100";
     };
 
@@ -36,8 +37,8 @@ export function NewsCard({ news }: { news: NewsItem }) {
         <div className="news-card-b2b p-8 flex flex-col h-full group">
             <div className="flex justify-between items-start mb-6">
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="px-3 py-1 bg-gray-100 rounded text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                        {news.source_name || 'Innovazione Agrifood'}
+                    <div className="px-3 py-1 bg-[#111111] rounded-[2px] text-[10px] font-bold text-white uppercase tracking-wider">
+                        {news.source_name || 'Food Hub'}
                     </div>
                     {news.category && (
                         <div className={`px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-wider ${getCategoryColor(news.category)}`}>
@@ -64,15 +65,15 @@ export function NewsCard({ news }: { news: NewsItem }) {
                 </p>
             </div>
 
-            <div className="flex justify-end mt-auto pt-6 border-t border-gray-50">
+            <div className="flex justify-end mt-auto pt-6 border-t border-gray-100">
                 <a
                     href={news.source_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm font-bold text-black border-b-2 border-transparent hover:border-black transition-all"
+                    className="inline-flex items-center gap-2 text-sm font-bold text-[#111111] hover:text-[#47b27b] transition-colors"
                 >
-                    <span>Leggi l'articolo</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span className="uppercase tracking-widest text-[11px]">Leggi l'articolo</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                 </a>
             </div>
         </div>

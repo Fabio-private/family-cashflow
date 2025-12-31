@@ -1,17 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #111111;
-  --color-accent-green: #73b27d;
-  --color-accent-orange: #f1ad72;
-  --color-accent-red: #d31048;
+  --color-primary: #47b27b;
+  --color-accent-red: #d31049;
+  --color-accent-gray: #53585c;
 
   --radius-dashboard: 0rem;
-  /* Flat corporate look */
-  --radius-news-card: 0.5rem;
+  --radius-news-card: 4px;
   --radius-pill: 9999px;
 
-  --font-inter: "Inter", "Montserrat", sans-serif;
+  --font-poppins: "Poppins", sans-serif;
 
   --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
@@ -29,7 +27,7 @@
   body {
     background-color: var(--canvas-bg);
     color: var(--text-main);
-    font-family: var(--font-inter);
+    font-family: var(--font-poppins);
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
   }
@@ -44,15 +42,14 @@
 
   .news-card-b2b {
     background: #FFFFFF;
-    border: 1px solid #F0F0F0;
+    border: 1px solid #e8e8e8;
     border-radius: var(--radius-news-card);
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.3s ease;
   }
 
   .news-card-b2b:hover {
-    border-color: #E2E2E2;
-    transform: translateY(-2px);
-    box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.04);
+    border-color: var(--color-primary);
+    background: #fcfcfc;
   }
 
   .nav-pill-b2b {
