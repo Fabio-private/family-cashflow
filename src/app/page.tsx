@@ -13,6 +13,7 @@ interface NewsItem {
     source_name: string;
     abstract: string;
     source_url: string;
+    image_url?: string;
     ranking_score: number;
     published_at: string;
     category?: string;
@@ -29,32 +30,35 @@ export default function Home() {
             setIsLoading(true);
             const formattedDate = format(selectedDate, 'yyyy-MM-dd');
 
-            // We alias 'source' as 'source_name' and 'url' as 'source_url' to match the UI types
+            // Fetch news using the verified schema
             let { data, error } = await supabase
                 .from('daily_news')
-                .select('id, title, source_name:source, abstract, source_url:url, ranking_score, published_at')
+                .select('*')
                 .eq('published_at', formattedDate)
                 .order('ranking_score', { ascending: false });
 
             if (error) {
-                console.error("Error fetching news:", error);
+                console.error("Supabase Query Error:", error);
+                setErrorMessage(`Errore caricamento: ${error.message}`);
                 setNews([]);
             } else if (!data || data.length === 0) {
-                // FALLBACK: If no news for today, fetch latest 10 news regardless of date
-                // This helps when testing or if data ingestion is delayed
+                console.warn("Nessuna notizia per oggi, provo fallback.");
                 const { data: latestData, error: latestError } = await supabase
                     .from('daily_news')
-                    .select('id, title, source_name:source, abstract, source_url:url, ranking_score, published_at')
+                    .select('*')
                     .order('published_at', { ascending: false })
                     .limit(10);
 
-                if (!latestError && latestData) {
+                if (!latestError && latestData && latestData.length > 0) {
                     setNews(latestData);
+                    setErrorMessage(null);
                 } else {
                     setNews([]);
+                    setErrorMessage("In attesa del caricamento dei nuovi dati agrifood...");
                 }
             } else {
                 setNews(data);
+                setErrorMessage(null);
             }
             setIsLoading(false);
         }
@@ -71,9 +75,16 @@ export default function Home() {
                     <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 mb-2">
                         News in Tavola
                     </h1>
-                    <p className="text-gray-500 font-medium">
-                        Le notizie più interessanti dal mondo nel settore agroalimentare.
-                    </p>
+                    <div className="flex items-center gap-3">
+                        <p className="text-gray-500 font-medium">
+                            Le notizie più interessanti dal mondo nel settore agroalimentare.
+                        </p>
+                        {news.length > 0 && (
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-400 text-[10px] font-bold rounded uppercase">
+                                {news.length} Notizie trovate
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <DateSelector

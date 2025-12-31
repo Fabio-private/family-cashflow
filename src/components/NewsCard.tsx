@@ -7,6 +7,7 @@ interface NewsItem {
     source_name: string;
     abstract: string;
     source_url: string;
+    image_url?: string;
     ranking_score: number;
     published_at: string;
     category?: string;
@@ -34,47 +35,58 @@ export function NewsCard({ news }: { news: NewsItem }) {
     };
 
     return (
-        <div className="news-card-b2b p-8 flex flex-col h-full group">
-            <div className="flex justify-between items-start mb-6">
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="px-3 py-1 bg-[#111111] rounded-[2px] text-[10px] font-bold text-white uppercase tracking-wider">
-                        {news.source_name || 'Food Hub'}
-                    </div>
-                    {news.category && (
-                        <div className={`px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-wider ${getCategoryColor(news.category)}`}>
-                            {news.category}
-                        </div>
-                    )}
-                    <div className="flex items-center gap-1.5 ml-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${scoreColor}`} />
-                        <span className="text-[11px] font-bold text-gray-400">Score: {news.ranking_score}/10</span>
-                    </div>
+        <div className="news-card-b2b flex flex-col h-full group overflow-hidden">
+            {news.image_url && (
+                <div className="relative h-48 overflow-hidden">
+                    <img
+                        src={news.image_url}
+                        alt={news.title}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
                 </div>
-                <button className="text-gray-300 hover:text-black transition-colors">
-                    <Bookmark className="w-5 h-5" />
-                </button>
-            </div>
+            )}
+            <div className="p-8 flex flex-col flex-1">
+                <div className="flex justify-between items-start mb-6">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="px-3 py-1 bg-[#111111] rounded-[2px] text-[10px] font-bold text-white uppercase tracking-wider">
+                            {news.source_name || 'Food Hub'}
+                        </div>
+                        {news.category && (
+                            <div className={`px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-wider ${getCategoryColor(news.category)}`}>
+                                {news.category}
+                            </div>
+                        )}
+                        <div className="flex items-center gap-1.5 ml-2">
+                            <div className={`w-1.5 h-1.5 rounded-full ${scoreColor}`} />
+                            <span className="text-[11px] font-bold text-gray-400">Score: {news.ranking_score}/10</span>
+                        </div>
+                    </div>
+                    <button className="text-gray-300 hover:text-black transition-colors">
+                        <Bookmark className="w-5 h-5" />
+                    </button>
+                </div>
 
-            <h3 className="text-2xl font-bold text-gray-900 leading-tight mb-4 group-hover:text-black transition-colors">
-                {news.title}
-            </h3>
+                <h3 className="text-2xl font-bold text-gray-900 leading-tight mb-4 group-hover:text-black transition-colors">
+                    {news.title}
+                </h3>
 
-            <div className="flex-1">
-                <p className="text-gray-600 text-[15px] leading-relaxed mb-8 font-medium">
-                    {news.abstract}
-                </p>
-            </div>
+                <div className="flex-1">
+                    <p className="text-gray-600 text-[15px] leading-relaxed mb-8 font-medium">
+                        {news.abstract}
+                    </p>
+                </div>
 
-            <div className="flex justify-end mt-auto pt-6 border-t border-gray-100">
-                <a
-                    href={news.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm font-bold text-[#111111] hover:text-[#47b27b] transition-colors"
-                >
-                    <span className="uppercase tracking-widest text-[11px]">Leggi l'articolo</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                </a>
+                <div className="flex justify-end mt-auto pt-6 border-t border-gray-100">
+                    <a
+                        href={news.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-bold text-[#111111] hover:text-[#47b27b] transition-colors"
+                    >
+                        <span className="uppercase tracking-widest text-[11px]">Leggi l'articolo</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                </div>
             </div>
         </div>
     );
