@@ -28,17 +28,32 @@ export default function Home() {
             setIsLoading(true);
             const formattedDate = format(selectedDate, 'yyyy-MM-dd');
 
-            const { data, error } = await supabase
+            // We alias 'source' as 'source_name' and 'url' as 'source_url' to match the UI types
+            let { data, error } = await supabase
                 .from('daily_news')
-                .select('*')
+                .select('id, title, source_name:source, abstract, source_url:url, ranking_score, published_at')
                 .eq('published_at', formattedDate)
                 .order('ranking_score', { ascending: false });
 
             if (error) {
                 console.error("Error fetching news:", error);
                 setNews([]);
+            } else if (!data || data.length === 0) {
+                // FALLBACK: If no news for today, fetch latest 10 news regardless of date
+                // This helps when testing or if data ingestion is delayed
+                const { data: latestData, error: latestError } = await supabase
+                    .from('daily_news')
+                    .select('id, title, source_name:source, abstract, source_url:url, ranking_score, published_at')
+                    .order('published_at', { ascending: false })
+                    .limit(10);
+
+                if (!latestError && latestData) {
+                    setNews(latestData);
+                } else {
+                    setNews([]);
+                }
             } else {
-                setNews(data || []);
+                setNews(data);
             }
             setIsLoading(false);
         }
