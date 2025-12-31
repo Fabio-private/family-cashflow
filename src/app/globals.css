@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #111111;
+  --color-accent-green: #73b27d;
+  --color-accent-orange: #f1ad72;
+  --color-accent-red: #d31048;
+
+  --radius-dashboard: 0rem;
+  /* Flat corporate look */
+  --radius-news-card: 0.5rem;
+  --radius-pill: 9999px;
+
+  --font-inter: "Inter", "Montserrat", sans-serif;
+
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+:root {
+  --canvas-bg: #FFFFFF;
+  --dashboard-bg: #FFFFFF;
+  --text-main: #111111;
+  --text-muted: #666666;
+  --border-light: #EEEEEE;
+}
+
+@layer base {
+  body {
+    background-color: var(--canvas-bg);
+    color: var(--text-main);
+    font-family: var(--font-inter);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .dashboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem 4rem;
+  }
+
+  .news-card-b2b {
+    background: #FFFFFF;
+    border: 1px solid #F0F0F0;
+    border-radius: var(--radius-news-card);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .news-card-b2b:hover {
+    border-color: #E2E2E2;
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.04);
+  }
+
+  .nav-pill-b2b {
+    background: transparent;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .nav-pill-b2b.active {
+    color: #000000;
+    background: #F8F8F8;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
