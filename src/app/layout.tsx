@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
-import { Poppins } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import { AppLayout } from "@/components/AppLayout";
 
-const poppins = Poppins({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: "News in Tavola | Food Hub",
-  description: "Le notizie più interessanti dal mondo nel settore agroalimentare.",
+  title: "Family Budget Hub | Analytics",
+  description: "Dashboard professionale per la gestione del budget familiare.",
 };
+
+import { AuthProvider } from "@/context/AuthContext";
 
 export default function RootLayout({
   children,
@@ -20,8 +22,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="it" className="h-full">
-      <body className={`${poppins.className} h-full antialiased`}>
-        {children}
+      <body className={`${jakarta.className} h-full antialiased`}>
+        <AuthProvider>
+          <AppLayout>
+            {children}
+          </AppLayout>
+        </AuthProvider>
       </body>
     </html>
   );
