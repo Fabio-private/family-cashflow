@@ -22,7 +22,9 @@ import {
     PlusCircle,
     User,
     Tag,
-    FileText
+    FileText,
+    BarChart3,
+    UtensilsCrossed
 } from "lucide-react";
 import { AddTransactionModal } from "./AddTransactionModal";
 
@@ -117,26 +119,21 @@ export default function Dashboard() {
     const [showSuggestions, setShowSuggestions] = useState(false);
 
     // --- FAMILY BUDGET LOGIC ---
-    // A transaction is for the "Family Budget" if:
-    // 1. It's an Income arriving at a Joint/Shared Account or Meal Vouchers
-    // 2. It's an Expense where:
-    //    - Beneficiary is NULL (Family)
-    //    - OR Beneficiary is different from Payer (one person paying for someone else or children)
-    //    - OR It's from a Joint Account (owner_id is NULL)
-    //    - OR It's from a Meal Voucher account (Buoni Pasto)
     const familyTransactions = useMemo(() => {
         return transactions.filter(t => {
-            const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
+            const isJointAccount = t.accounts && t.accounts.owner_id === null;
             const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
 
             if (t.type === 'income') {
-                return isFromJointAccount || isMealVoucher;
+                return isJointAccount || isMealVoucher;
             }
 
+            // Exclude transfers (unless it's an expense from a joint account?) 
+            // Usually giroconto between member and joint is marked as income on joint.
             if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
 
             // Include if from Joint/Meal Voucher account
-            if (isFromJointAccount || isMealVoucher) return true;
+            if (isJointAccount || isMealVoucher) return true;
             if (t.beneficiary_id === null) return true; // Famiglia
             if (t.beneficiary_id !== t.payer_id) return true; // Paid for someone else
 
@@ -273,15 +270,17 @@ export default function Dashboard() {
         const currentTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === currentMonthStr);
         const prevTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === prevMonthStr);
 
+        // Budget Disponibile = Incomes to Joint accounts (EXCLUDING Meal Vouchers)
         const income = currentTxs
-            .filter(t => t.type === 'income')
+            .filter(t => t.type === 'income' && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
             .reduce((sum, t) => sum + Number(t.amount), 0);
+
         const expense = currentTxs
             .filter(t => t.type === 'expense')
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
         const prevIncome = prevTxs
-            .filter(t => t.type === 'income')
+            .filter(t => t.type === 'income' && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
             .reduce((sum, t) => sum + Number(t.amount), 0);
         const prevExpense = prevTxs
             .filter(t => t.type === 'expense')
@@ -293,9 +292,9 @@ export default function Dashboard() {
         };
 
         return {
-            income,
-            expense,
-            balance: income - expense,
+            income, // This is "Budget Disponibile"
+            expense, // This is "Spese Totali"
+            balance: income - expense, // This is "Bilancio Netto"
             incomeTrend: calculateTrend(income, prevIncome),
             expenseTrend: calculateTrend(expense, prevExpense),
             balanceTrend: calculateTrend(income - expense, prevIncome - prevExpense)
@@ -628,16 +627,16 @@ export default function Dashboard() {
                 </div>
             </div>
             {/* 2. Primary Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
                 <MetricCard
-                    label="Entrate Totali"
+                    label="Budget Disponibile"
                     value={stats.income}
-                    icon={TrendingUp}
+                    icon={Wallet}
                     color="emerald"
                     trend={`${stats.incomeTrend > 0 ? '+' : ''}${stats.incomeTrend.toFixed(0)}% vs mese scorso`}
                 />
                 <MetricCard
-                    label="Spese Totali"
+                    label="Spese Totali (Famiglia)"
                     value={stats.expense}
                     icon={TrendingDown}
                     color="rose"
@@ -645,12 +644,21 @@ export default function Dashboard() {
                 />
                 <MetricCard
                     label="Bilancio Netto"
-                    value={stats.income - stats.expense}
-                    icon={TrendingUp}
+                    value={stats.balance}
+                    icon={BarChart3}
                     color="indigo"
-                    trend={stats.income - stats.expense > 0 ? "In Attivo" : "In Passivo"}
+                    trend={stats.balance > 0 ? "Risparmio" : "Deficit"}
                 />
-                <RebalanceMetricCard data={rebalanceData} onSettle={handleSettlement} />
+                <MetricCard
+                    label="Buoni Pasto"
+                    value={buoniPastoBalance}
+                    icon={UtensilsCrossed}
+                    color="amber"
+                    trend="Disponibilità BP"
+                />
+                <div className="xl:col-span-1">
+                    <RebalanceMetricCard data={rebalanceData} onSettle={handleSettlement} />
+                </div>
             </div>
             {/* 3. Analysis & Feed Section */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-8">
