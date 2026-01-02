@@ -29,6 +29,7 @@ import {
 import { AddTransactionModal } from "./AddTransactionModal";
 
 const DashboardChart = dynamic(() => import("./DashboardChart"), { ssr: false });
+const CategoryPieChart = dynamic(() => import("./CategoryPieChart"), { ssr: false });
 
 
 export default function Dashboard() {
@@ -284,22 +285,24 @@ export default function Dashboard() {
         return incomeFromSources + incomeFromBonus;
     }, [familyTransactions]);
 
-    const chartData = useMemo(() => {
-        const start = startOfWeek(new Date(), { weekStartsOn: 1 });
-        const end = endOfWeek(new Date(), { weekStartsOn: 1 });
-        const days = eachDayOfInterval({ start, end });
-
-        return days.map(day => {
-            const dailyTx = familyTransactions.filter(t => isSameDay(new Date(t.date), day));
-            const income = dailyTx.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
-            const expense = dailyTx.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
-
-            return {
-                name: format(day, "ccc", { locale: it }),
-                income,
-                expense
-            };
+    const categoryData = useMemo(() => {
+        const now = new Date();
+        const currentMonthExpenses = familyTransactions.filter(t => {
+            const d = new Date(t.date);
+            return t.type === 'expense' && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
         });
+
+        const totals: Record<string, number> = {};
+        currentMonthExpenses.forEach(t => {
+            const catName = t.categories?.name || 'Altro';
+            totals[catName] = (totals[catName] || 0) + Number(t.amount);
+        });
+
+        return Object.entries(totals).map(([name, value]) => ({
+            name,
+            value,
+            color: '' // CategoryPieChart handles default colors
+        })).sort((a, b) => b.value - a.value);
     }, [familyTransactions]);
 
     const currentMonthLabel = useMemo(() => {
@@ -575,55 +578,62 @@ export default function Dashboard() {
                 <div className="xl:col-span-2 soft-card p-4 md:p-8">
                     <div className="flex items-center justify-between mb-10">
                         <div>
-                            <h3 className="text-xl font-black text-slate-900">Andamento Settimanale</h3>
-                            <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-1">Ultimi 7 giorni</p>
-                        </div>
-                        <div className="flex gap-2">
-                            <button className="p-2 border border-slate-100 rounded-xl text-slate-400 hover:text-slate-600"><Filter size={18} /></button>
-                            <button className="p-2 border border-slate-100 rounded-xl text-slate-400 hover:text-slate-600 text-sm font-bold px-4">Questa Settimana</button>
+                            <h3 className="text-xl font-black text-slate-900">Distribuzione Spese</h3>
+                            <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-1">Per Categoria (Mese Corrente)</p>
                         </div>
                     </div>
-                    <DashboardChart data={chartData} />
+                    <CategoryPieChart data={categoryData} />
                 </div>
 
                 {/* 3b. Members Overview */}
-                <div className="soft-card">
+                <div className="soft-card p-8">
                     <div className="flex items-center justify-between mb-8">
-                        <h3 className="text-xl font-black text-slate-900">Per Membro (Uscite)</h3>
-                        <Link href="/members" className="text-indigo-600 font-bold text-xs flex items-center gap-1 hover:gap-2 transition-all">
-                            Tutti <ArrowRight size={14} />
-                        </Link>
+                        <h3 className="text-xl font-black text-slate-900">Pagine Membro</h3>
+                        <Activity size={20} className="text-indigo-500" />
                     </div>
-                    <div className="space-y-6">
-                        {familyMemberSummary.map((m, idx) => (
-                            <Link
-                                key={m.member_name}
-                                href={`/member/${m.member_name.toLowerCase()}`}
-                                className="flex items-center justify-between group/row p-2 -mx-2 rounded-xl hover:bg-slate-50 transition-all"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600 transition-all font-black text-xs">
-                                        {m.member_name.charAt(0)}
+
+                    <div className="space-y-4">
+                        {members.filter(m => ['Fabio', 'Giulia'].includes(m.name)).map((m) => {
+                            const memberStats = familyMemberSummary.find(s => s.member_name === m.name);
+                            return (
+                                <Link
+                                    key={m.id}
+                                    href={`/member/${m.id}`}
+                                    className="group block p-6 bg-slate-50 hover:bg-indigo-600 rounded-3xl transition-all border border-slate-100/50 hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-100"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center text-lg font-black text-indigo-600 group-hover:scale-110 transition-transform">
+                                                {m.name[0]}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-black text-slate-900 group-hover:text-white transition-colors uppercase tracking-tight">{m.name}</h4>
+                                                <p className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-200 uppercase tracking-widest">Vai alla Dashboard →</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs font-black text-rose-500 group-hover:text-white transition-colors">-€{Number(memberStats?.total_amount || 0).toLocaleString('it-IT')}</p>
+                                            <p className="text-[8px] font-black text-slate-400 group-hover:text-indigo-200 uppercase tracking-widest mt-1">Spesi per famiglia</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-black text-slate-800">{m.member_name}</p>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Member</p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-sm font-black text-rose-500">-€ {Number(m.total_amount).toLocaleString('it-IT')}</p>
-                                    <div className="h-1 w-20 bg-slate-50 rounded-full mt-2 overflow-hidden">
-                                        <div
-                                            className="h-full bg-rose-400 rounded-full transition-all duration-1000"
-                                            style={{
-                                                width: `${familyMemberSummary[0].total_amount > 0 ? (Number(m.total_amount) / Number(familyMemberSummary[0].total_amount)) * 100 : 0}%`
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            </Link>
-                        ))}
+                                </Link>
+                            );
+                        })}
                     </div>
+
+                    {members.length > 2 && (
+                        <div className="mt-8 pt-8 border-t border-slate-100">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Altri Membri</h4>
+                            <div className="space-y-3">
+                                {members.filter(m => !['Fabio', 'Giulia'].includes(m.name)).map(m => (
+                                    <Link key={m.id} href={`/member/${m.id}`} className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-colors">
+                                        <span className="text-sm font-bold text-slate-600">{m.name}</span>
+                                        <ArrowRight size={14} className="text-slate-300" />
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
