@@ -440,6 +440,7 @@ export default function Dashboard() {
                 description: `Pareggio Spese - ${format(now, 'MMMM yyyy', { locale: it })}`,
                 type: 'expense',
                 category_id: settlementCat?.id,
+                family_id: member?.family_id,
                 date: new Date().toISOString().split('T')[0]
             });
 
@@ -482,6 +483,7 @@ export default function Dashboard() {
                     category_id: expenseCatId,
                     payer_id: member.id,
                     account_id: personalAccount.id,
+                    family_id: member.family_id,
                     date: dateStr
                 },
                 {
@@ -492,6 +494,7 @@ export default function Dashboard() {
                     payer_id: member.id,
                     beneficiary_id: null,
                     account_id: sharedAccount.id,
+                    family_id: member.family_id,
                     date: dateStr
                 }
             ];
