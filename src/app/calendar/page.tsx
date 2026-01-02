@@ -45,12 +45,19 @@ export default function CalendarPage() {
         const start = format(startOfMonth(currentMonth), "yyyy-MM-dd");
         const end = format(endOfMonth(currentMonth), "yyyy-MM-dd");
 
-        const { data } = await supabase
+        // Fetch with same inclusivity as Dashboard
+        let query = supabase
             .from("transactions")
-            .select("*, categories(name)")
-            .eq("family_id", member.family_id)
+            .select("*, categories(name), accounts(id, name, owner_id)")
             .gte("date", start)
-            .lte("date", end);
+            .lte("date", end)
+            .order("date", { ascending: false });
+
+        if (member.family_id) {
+            query = query.or(`family_id.eq.${member.family_id},family_id.is.null`);
+        }
+
+        const { data } = await query;
 
         if (data) setTransactions(data as any);
         setIsLoading(false);
@@ -60,6 +67,26 @@ export default function CalendarPage() {
         fetchData();
     }, [fetchData]);
 
+    const familyTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            const isJointAccount = t.accounts && t.accounts.owner_id === null;
+            const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
+
+            if (t.type === 'income') {
+                return isJointAccount || isMealVoucher;
+            }
+
+            // Exclude transfers from the total sum (to avoid double counting income/expense in stats)
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+
+            if (isJointAccount || isMealVoucher) return true;
+            if (t.beneficiary_id === null) return true; // Famiglia
+            if (t.beneficiary_id !== t.payer_id) return true; // Paid for someone else
+
+            return false;
+        });
+    }, [transactions]);
+
     const days = useMemo(() => {
         const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 });
         const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 });
@@ -67,17 +94,17 @@ export default function CalendarPage() {
     }, [currentMonth]);
 
     const getDailyTransactions = (day: Date) => {
-        return transactions.filter(t => isSameDay(new Date(t.date), day));
+        return familyTransactions.filter(t => isSameDay(new Date(t.date), day));
     };
 
     const monthlyStats = useMemo(() => {
-        const income = transactions.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
-        const expense = transactions.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
+        const income = familyTransactions.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
+        const expense = familyTransactions.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
         return { income, expense, balance: income - expense };
-    }, [transactions]);
+    }, [familyTransactions]);
 
     const peakDay = useMemo(() => {
-        const dailyExpenses = transactions.filter(t => t.type === 'expense').reduce((acc: any, curr) => {
+        const dailyExpenses = familyTransactions.filter(t => t.type === 'expense').reduce((acc: any, curr) => {
             const date = curr.date;
             acc[date] = (acc[date] || 0) + Number(curr.amount);
             return acc;
@@ -88,7 +115,7 @@ export default function CalendarPage() {
             return { date: new Date(sorted[0][0]), amount: sorted[0][1] as number };
         }
         return null;
-    }, [transactions]);
+    }, [familyTransactions]);
 
     return (
         <div className="space-y-10 animate-up">
