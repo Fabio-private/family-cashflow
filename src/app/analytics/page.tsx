@@ -50,12 +50,19 @@ export default function AnalyticsPage() {
         const start = format(startOfYear(new Date(parseInt(selectedYear), 0, 1)), "yyyy-MM-dd");
         const end = format(endOfYear(new Date(parseInt(selectedYear), 11, 31)), "yyyy-MM-dd");
 
-        const { data: txData } = await supabase
+        // Fetch with same inclusivity as Dashboard
+        let txQuery = supabase
             .from("transactions")
             .select("*, categories(name), accounts(id, name, owner_id)")
-            .eq("family_id", member.family_id)
             .gte("date", start)
-            .lte("date", end);
+            .lte("date", end)
+            .order("date", { ascending: false });
+
+        if (member.family_id) {
+            txQuery = txQuery.or(`family_id.eq.${member.family_id},family_id.is.null`);
+        }
+
+        const { data: txData } = await txQuery;
 
         const { data: sumData } = await supabase
             .from("monthly_summary")
@@ -81,13 +88,17 @@ export default function AnalyticsPage() {
     // --- FAMILY BUDGET LOGIC ---
     const familyTransactions = useMemo(() => {
         return transactions.filter(t => {
-            if (t.type === 'income') return true;
-            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
-
-            const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
+            const isJointAccount = t.accounts && t.accounts.owner_id === null;
             const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
 
-            if (isFromJointAccount || isMealVoucher) return true;
+            if (t.type === 'income') {
+                return isJointAccount || isMealVoucher;
+            }
+
+            // Exclude transfers (giroconto)
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+
+            if (isJointAccount || isMealVoucher) return true;
             if (t.beneficiary_id === null) return true; // Famiglia
             if (t.beneficiary_id !== t.payer_id) return true; // Paid for someone else
 
