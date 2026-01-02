@@ -18,17 +18,26 @@ export default function LoginPage() {
         setLoading(true);
         setError(null);
 
-        const { error: loginError } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        try {
+            const { error: loginError } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-        if (loginError) {
-            setError(loginError.message === "Invalid login credentials" ? "Email o password non corretti." : loginError.message);
+            if (loginError) {
+                setError(loginError.message === "Invalid login credentials" ? "Email o password non corretti." : loginError.message);
+                setLoading(false);
+            } else {
+                // Login successful - navigate to home
+                // Note: We don't setLoading(false) here because we're navigating away.
+                // If navigation fails for some reason, the try-catch will handle it.
+                router.push("/");
+                router.refresh();
+            }
+        } catch (err) {
+            console.error("Login error:", err);
+            setError("Si è verificato un errore durante il login. Riprova.");
             setLoading(false);
-        } else {
-            router.push("/");
-            router.refresh();
         }
     };
 

@@ -10,7 +10,6 @@ export default function RegisterPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [name, setName] = useState("");
-    const [familyName, setFamilyName] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const router = useRouter();
@@ -33,37 +32,8 @@ export default function RegisterPage() {
         }
 
         if (authData.user) {
-            // 2. Create Family
-            const joinCode = `FAM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-            const { data: familyData, error: familyError } = await supabase
-                .from("families")
-                .insert({ name: familyName || `Famiglia ${name}`, join_code: joinCode })
-                .select()
-                .single();
-
-            if (familyError) {
-                setError("Account creato, ma errore nella creazione della famiglia: " + familyError.message);
-                setLoading(false);
-                return;
-            }
-
-            // 3. Create Member Profile
-            const { error: memberError } = await supabase
-                .from("family_members")
-                .insert({
-                    name,
-                    role: 'parent',
-                    user_id: authData.user.id,
-                    family_id: familyData.id
-                });
-
-            if (memberError) {
-                setError("Errore nella creazione del profilo membro: " + memberError.message);
-                setLoading(false);
-            } else {
-                router.push("/");
-                router.refresh();
-            }
+            router.push("/auth/profile-setup");
+            router.refresh();
         }
     };
 
@@ -86,7 +56,7 @@ export default function RegisterPage() {
 
                 <div className="soft-card p-10 bg-white/80 backdrop-blur-xl border-white shadow-2xl shadow-indigo-100/20">
                     <form onSubmit={handleRegister} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-6">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Il Tuo Nome</label>
                                 <div className="relative group">
@@ -98,21 +68,6 @@ export default function RegisterPage() {
                                         onChange={(e) => setName(e.target.value)}
                                         className="w-full bg-slate-50/50 border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-slate-900 font-bold focus:bg-white focus:border-indigo-100 outline-none transition-all placeholder:text-slate-300 text-sm"
                                         placeholder="Esempio: Fabio"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nome Famiglia</label>
-                                <div className="relative group">
-                                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                                    <input
-                                        type="text"
-                                        required
-                                        value={familyName}
-                                        onChange={(e) => setFamilyName(e.target.value)}
-                                        className="w-full bg-slate-50/50 border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-slate-900 font-bold focus:bg-white focus:border-indigo-100 outline-none transition-all placeholder:text-slate-300 text-sm"
-                                        placeholder="Es: Famiglia Bianchi"
                                     />
                                 </div>
                             </div>
@@ -177,7 +132,7 @@ export default function RegisterPage() {
 
                 <div className="mt-8 text-center bg-slate-100/50 rounded-2xl p-4 border border-slate-100">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">
-                        Riceverai un codice unico da condividere con gli altri membri della famiglia per collegarli al tuo budget.
+                        Crea il tuo account per accedere al budget condiviso della tua famiglia.
                     </p>
                 </div>
             </div>

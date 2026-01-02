@@ -35,8 +35,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (data) {
             setMember(data as FamilyMember);
-        } else if (error && error.code !== "PGRST116") {
-            console.error("Error fetching member profile:", error);
+        } else {
+            if (error && error.code !== "PGRST116") {
+                console.error("Error fetching member profile:", error);
+            }
+            setMember(null);
         }
     };
 
