@@ -23,7 +23,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 router.push("/auth/login");
             } else if (user && !member && !isAuthPage) {
                 // User is logged in but has no family profile yet
-                router.push("/auth/register");
+                router.push("/auth/profile-setup");
             }
         }
     }, [user, member, loading, isAuthPage, router]);
