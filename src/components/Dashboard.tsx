@@ -118,7 +118,7 @@ export default function Dashboard() {
 
     // --- FAMILY BUDGET LOGIC ---
     // A transaction is for the "Family Budget" if:
-    // 1. It's an Income (always family revenue)
+    // 1. It's an Income arriving at a Joint/Shared Account or Meal Vouchers
     // 2. It's an Expense where:
     //    - Beneficiary is NULL (Family)
     //    - OR Beneficiary is different from Payer (one person paying for someone else or children)
@@ -126,14 +126,16 @@ export default function Dashboard() {
     //    - OR It's from a Meal Voucher account (Buoni Pasto)
     const familyTransactions = useMemo(() => {
         return transactions.filter(t => {
-            if (t.type === 'income') return true;
-            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
-
-            const isPersonal = t.beneficiary_id === t.payer_id && t.beneficiary_id !== null;
             const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
             const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
 
-            // Include if NOT personal OR if from Joint/Meal Voucher account
+            if (t.type === 'income') {
+                return isFromJointAccount || isMealVoucher;
+            }
+
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+
+            // Include if from Joint/Meal Voucher account
             if (isFromJointAccount || isMealVoucher) return true;
             if (t.beneficiary_id === null) return true; // Famiglia
             if (t.beneficiary_id !== t.payer_id) return true; // Paid for someone else
@@ -300,6 +302,25 @@ export default function Dashboard() {
         };
     }, [familyTransactions]);
 
+    const familyMemberSummary = useMemo(() => {
+        const now = new Date();
+        const currentMonthTxs = familyTransactions.filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+
+        return members.map(m => {
+            const memberTx = currentMonthTxs.filter(t => t.payer_id === m.id);
+            const total = memberTx
+                .filter(t => t.type === 'expense')
+                .reduce((acc, curr) => acc + Number(curr.amount), 0);
+
+            return {
+                member_name: m.name,
+                total_amount: total
+            };
+        }).sort((a, b) => b.total_amount - a.total_amount);
+    }, [familyTransactions, members]);
     const buoniPastoBalance = useMemo(() => {
         const bpAccountNames = ["Buoni Pasto Fabio", "Buoni pasto Fabio"];
         const bpIncome = familyTransactions
@@ -657,23 +678,31 @@ export default function Dashboard() {
                         </Link>
                     </div>
                     <div className="space-y-6">
-                        {summary.filter(s => s.type === 'expense').map((m, idx) => (
+                        {familyMemberSummary.map((m, idx) => (
                             <Link
-                                key={idx}
+                                key={m.member_name}
                                 href={`/member/${m.member_name.toLowerCase()}`}
-                                className="flex items-center justify-between group p-3 -mx-3 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100"
+                                className="flex items-center justify-between group/row p-2 -mx-2 rounded-xl hover:bg-slate-50 transition-all"
                             >
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-100 to-white flex items-center justify-center font-black text-slate-400 border border-slate-200 group-hover:from-indigo-600 group-hover:to-violet-500 group-hover:text-white group-hover:border-transparent transition-all shadow-sm">
-                                        {m.member_name[0]}
+                                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600 transition-all font-black text-xs">
+                                        {m.member_name.charAt(0)}
                                     </div>
                                     <div>
                                         <p className="text-sm font-black text-slate-800">{m.member_name}</p>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Spesa: € {Number(m.total_amount).toFixed(2)}</p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Member</p>
                                     </div>
                                 </div>
-                                <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                                    <ArrowUpRight size={14} className="text-slate-400" />
+                                <div className="text-right">
+                                    <p className="text-sm font-black text-rose-500">-€ {Number(m.total_amount).toLocaleString('it-IT')}</p>
+                                    <div className="h-1 w-20 bg-slate-50 rounded-full mt-2 overflow-hidden">
+                                        <div
+                                            className="h-full bg-rose-400 rounded-full transition-all duration-1000"
+                                            style={{
+                                                width: `${familyMemberSummary[0].total_amount > 0 ? (Number(m.total_amount) / Number(familyMemberSummary[0].total_amount)) * 100 : 0}%`
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             </Link>
                         ))}

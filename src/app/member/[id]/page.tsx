@@ -76,10 +76,17 @@ export default function MemberPage({ params }: { params: Promise<{ id: string }>
     }, [fetchData]);
 
     const stats = useMemo(() => {
-        const income = summary.filter(s => s.type === 'income').reduce((acc, curr) => acc + Number(curr.total_amount), 0);
-        const expense = summary.filter(s => s.type === 'expense').reduce((acc, curr) => acc + Number(curr.total_amount), 0);
+        const incomeTxs = transactions.filter(t =>
+            t.type === 'income' &&
+            !t.categories?.name?.toLowerCase().includes('giroconto')
+        );
+        const expenseTxs = transactions.filter(t => t.type === 'expense');
+
+        const income = incomeTxs.reduce((acc, curr) => acc + Number(curr.amount), 0);
+        const expense = expenseTxs.reduce((acc, curr) => acc + Number(curr.amount), 0);
+
         return { income, expense, balance: income - expense };
-    }, [summary]);
+    }, [transactions]);
 
     const chartData = useMemo(() => {
         const start = startOfWeek(new Date(), { weekStartsOn: 1 });
