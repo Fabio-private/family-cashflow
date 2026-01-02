@@ -104,7 +104,7 @@ function BuoniPastoCard({ balance }: { balance: number }) {
 }
 
 export default function Dashboard() {
-    const { user, member } = useAuth();
+    const { member } = useAuth();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [members, setMembers] = useState<any[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
