@@ -30,80 +30,6 @@ import { AddTransactionModal } from "./AddTransactionModal";
 
 const DashboardChart = dynamic(() => import("./DashboardChart"), { ssr: false });
 
-function BudgetProgressCard({ budgetGoal, expense }: { budgetGoal: number, expense: number }) {
-    const percent = budgetGoal > 0 ? Math.min((expense / budgetGoal) * 100, 100) : 0;
-    const remaining = budgetGoal - expense;
-    const isOver = remaining < 0;
-
-    return (
-        <div className="soft-card bg-white p-6 border-none flex flex-col justify-between group overflow-hidden relative">
-            <div className="flex justify-between items-start mb-4">
-                <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Budget Disponibile</p>
-                    <h3 className="text-xl font-black text-slate-900">€{budgetGoal.toLocaleString('it-IT')}</h3>
-                </div>
-                <div className={`p-2 rounded-lg ${isOver ? 'bg-rose-50 text-rose-500' : 'bg-indigo-50 text-indigo-500'}`}>
-                    <Activity size={18} />
-                </div>
-            </div>
-
-            <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        {isOver ? 'Budget Superato!' : 'Rimanente'}
-                    </p>
-                    <p className={`text-sm font-black ${isOver ? 'text-rose-500' : 'text-slate-900'}`}>
-                        €{Math.abs(remaining).toLocaleString('it-IT')}
-                    </p>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                        className={`h-full transition-all duration-1000 ease-out rounded-full ${isOver ? 'bg-rose-500' : 'bg-indigo-500'}`}
-                        style={{ width: `${percent}%` }}
-                    />
-                </div>
-                <p className="text-[10px] font-bold text-slate-400">
-                    Hai utilizzato il <span className={isOver ? 'text-rose-500' : 'text-indigo-500'}>{percent.toFixed(0)}%</span> del budget prefissato.
-                </p>
-            </div>
-
-            {/* Background design element */}
-            <div className="absolute -bottom-6 -right-6 text-slate-50 opacity-10 group-hover:scale-110 transition-transform duration-500">
-                <TrendingDown size={120} />
-            </div>
-        </div>
-    );
-}
-
-function BuoniPastoCard({ balance }: { balance: number }) {
-    return (
-        <div className="soft-card bg-emerald-500 p-6 border-none flex flex-col justify-between group overflow-hidden relative text-white">
-            <div className="flex justify-between items-start mb-4">
-                <div>
-                    <p className="text-[10px] font-black text-emerald-100 uppercase tracking-widest">Residuo Buoni Pasto</p>
-                    <h3 className="text-xl font-black">€{balance.toLocaleString('it-IT')}</h3>
-                </div>
-                <div className="p-2 bg-white/20 rounded-lg backdrop-blur-md">
-                    <TrendingUp size={18} />
-                </div>
-            </div>
-
-            <div className="space-y-1">
-                <p className="text-[10px] font-bold text-emerald-100 italic">"Galoppa la spesa!"</p>
-                <div className="h-1.5 w-full bg-emerald-700/30 rounded-full overflow-hidden mt-2">
-                    <div
-                        className="h-full bg-white rounded-full transition-all duration-1000"
-                        style={{ width: `${Math.min((balance / 200) * 100, 100)}%` }}
-                    />
-                </div>
-            </div>
-
-            <div className="absolute -bottom-6 -right-6 text-white opacity-10 group-hover:scale-110 transition-transform duration-500">
-                <PlusCircle size={120} />
-            </div>
-        </div>
-    );
-}
 
 export default function Dashboard() {
     const { member } = useAuth();
@@ -563,66 +489,49 @@ export default function Dashboard() {
     return (
         <div className="space-y-12 animate-up">
             {/* 1. Welcome Hero Section - Ultra Compact */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 items-stretch">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 items-stretch">
                 {/* Brand & Action Column */}
-                <div className="lg:col-span-1 soft-card bg-white p-8 border-none flex flex-col justify-center relative overflow-hidden group">
+                <div className="lg:col-span-2 soft-card bg-white p-8 border-none flex flex-row items-center justify-between relative overflow-hidden group">
                     <div className="absolute -right-4 -top-4 w-24 h-24 bg-indigo-50 rounded-full blur-3xl opacity-50 group-hover:scale-150 transition-transform duration-700"></div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none relative z-10">Famiglia Cashflow</h1>
-                    <p className="text-slate-400 text-[10px] font-black mt-3 flex items-center gap-1.5 uppercase tracking-widest relative z-10">
-                        <Activity size={12} className="text-indigo-500" />
-                        {currentMonthLabel}
-                    </p>
+                    <div>
+                        <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none relative z-10">Famiglia Cashflow</h1>
+                        <p className="text-slate-400 text-[10px] font-black mt-3 flex items-center gap-1.5 uppercase tracking-widest relative z-10">
+                            <Activity size={12} className="text-indigo-500" />
+                            {currentMonthLabel}
+                        </p>
+                    </div>
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="mt-8 w-full flex items-center justify-center gap-2 px-6 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-200 transition-all active:scale-95 relative z-10"
+                        className="w-auto flex items-center justify-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-200 transition-all active:scale-95 relative z-10"
                     >
                         <PlusCircle size={18} /> Nuova Operazione
                     </button>
                 </div>
 
-                {/* Resources Stack Column */}
-                <div className="lg:col-span-1">
-                    <BudgetProgressCard budgetGoal={dynamicBudget} expense={stats.expense} />
-                </div>
-
-                <div className="lg:col-span-1 flex flex-col gap-4">
-                    <BuoniPastoCard balance={buoniPastoBalance} />
-                    <div className="soft-card p-4 flex items-center justify-between bg-white border-slate-100">
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => !contributionStatus.fabio && handleRecordContribution('Fabio')}
-                                disabled={contributionStatus.fabio}
-                                className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-all shadow-sm relative group overflow-hidden ${contributionStatus.fabio
-                                    ? 'bg-emerald-500 text-white shadow-emerald-200'
-                                    : 'bg-white text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-100'
-                                    }`}
-                                title={contributionStatus.fabio ? 'Quota versata' : 'Registra quota Fabio (600€)'}
-                            >
-                                <span className="relative z-10">F</span>
-                                {!contributionStatus.fabio && (
-                                    <div className="absolute inset-0 bg-indigo-50/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <Plus size={12} className="text-indigo-600 ml-3 mt-3" />
-                                    </div>
-                                )}
-                            </button>
-                            <button
-                                onClick={() => !contributionStatus.giulia && handleRecordContribution('Giulia')}
-                                disabled={contributionStatus.giulia}
-                                className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-all shadow-sm relative group overflow-hidden ${contributionStatus.giulia
-                                    ? 'bg-emerald-500 text-white shadow-emerald-200'
-                                    : 'bg-white text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-100'
-                                    }`}
-                                title={contributionStatus.giulia ? 'Quota versata' : 'Registra quota Giulia (600€)'}
-                            >
-                                <span className="relative z-10">G</span>
-                                {!contributionStatus.giulia && (
-                                    <div className="absolute inset-0 bg-indigo-50/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <Plus size={12} className="text-indigo-600 ml-3 mt-3" />
-                                    </div>
-                                )}
-                            </button>
-                        </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Quota 600€</span>
+                {/* Quota Buttons Column */}
+                <div className="lg:col-span-1 soft-card p-6 flex flex-col justify-center bg-white border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Quote Mensili (600€)</p>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={() => !contributionStatus.fabio && handleRecordContribution('Fabio')}
+                            disabled={contributionStatus.fabio}
+                            className={`flex-1 h-14 rounded-2xl flex items-center justify-center gap-2 text-xs font-black transition-all shadow-sm relative group overflow-hidden ${contributionStatus.fabio
+                                ? 'bg-emerald-500 text-white shadow-emerald-200'
+                                : 'bg-white text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-100'
+                                }`}
+                        >
+                            <User size={16} /> Fabio
+                        </button>
+                        <button
+                            onClick={() => !contributionStatus.giulia && handleRecordContribution('Giulia')}
+                            disabled={contributionStatus.giulia}
+                            className={`flex-1 h-14 rounded-2xl flex items-center justify-center gap-2 text-xs font-black transition-all shadow-sm relative group overflow-hidden ${contributionStatus.giulia
+                                ? 'bg-emerald-500 text-white shadow-emerald-200'
+                                : 'bg-white text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-100'
+                                }`}
+                        >
+                            <User size={16} /> Giulia
+                        </button>
                     </div>
                 </div>
             </div>
