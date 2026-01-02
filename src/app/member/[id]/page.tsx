@@ -25,11 +25,14 @@ const DashboardChart = dynamic(() => import("@/components/DashboardChart"), { ss
 
 export default function MemberPage({ params }: { params: Promise<{ id: string }> }) {
     const { member: currentMember } = useAuth();
-    const { id: memberNameRaw } = use(params);
-    const memberName = memberNameRaw.charAt(0).toUpperCase() + memberNameRaw.slice(1);
+    const { id: idParam } = use(params);
+    const initialName = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idParam)
+        ? "Membro"
+        : idParam.charAt(0).toUpperCase() + idParam.slice(1);
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [summary, setSummary] = useState<MonthlySummary[]>([]);
+    const [memberName, setMemberName] = useState(initialName);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
@@ -38,15 +41,22 @@ export default function MemberPage({ params }: { params: Promise<{ id: string }>
 
         const currentMonth = format(new Date(), "yyyy-MM");
 
-        // 1. Fetch member ID from name AND family_id
-        const { data: memberObj } = await supabase
-            .from("family_members")
-            .select("id")
-            .eq("name", memberName)
-            .eq("family_id", currentMember.family_id)
-            .single();
+        // 1. Resolve member from ID or Name
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idParam);
+        let query = supabase.from("family_members").select("id, name");
+
+        if (isUuid) {
+            query = query.eq("id", idParam);
+        } else {
+            // Capitalize for legacy name-based URLs
+            const capitalizedName = idParam.charAt(0).toUpperCase() + idParam.slice(1);
+            query = query.eq("name", capitalizedName);
+        }
+
+        const { data: memberObj } = await query.eq("family_id", currentMember.family_id).single();
 
         if (memberObj) {
+            setMemberName(memberObj.name);
             const memberId = memberObj.id;
 
             // 2. Fetch transactions where member is payer OR beneficiary
@@ -61,15 +71,14 @@ export default function MemberPage({ params }: { params: Promise<{ id: string }>
                 .from("monthly_summary")
                 .select("*")
                 .eq("month", currentMonth)
-                .eq("family_id", currentMember.family_id)
-                .eq("member_name", memberName);
+                .eq("member_name", memberObj.name);
 
             if (txData) setTransactions(txData as any);
             if (sumData) setSummary(sumData as any);
         }
 
         setIsLoading(false);
-    }, [memberName, currentMember?.family_id]);
+    }, [idParam, currentMember?.family_id]);
 
     useEffect(() => {
         fetchData();

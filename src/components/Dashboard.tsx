@@ -76,11 +76,18 @@ export default function Dashboard() {
         const currentMonth = format(now, "yyyy-MM");
         const prevMonth = format(subMonths(now, 1), "yyyy-MM");
 
-        const { data: txData } = await supabase
+        // Fetch all transactions for this family OR those without a family_id (legacy)
+        let txQuery = supabase
             .from("transactions")
             .select("*, categories(name, id), payer:family_members!payer_id(name, id), beneficiary:family_members!beneficiary_id(name, id), accounts(id, name, owner_id)")
-            .eq("family_id", member.family_id)
             .order("date", { ascending: false });
+
+        if (member.family_id) {
+            txQuery = txQuery.or(`family_id.eq.${member.family_id},family_id.is.null`);
+        }
+
+        const { data: txData, error: txError } = await txQuery;
+        if (txError) console.error("Error fetching transactions:", txError);
 
         const { data: sumData } = await supabase
             .from("monthly_summary")
@@ -667,7 +674,7 @@ export default function Dashboard() {
                                             key={i}
                                             onClick={() => {
                                                 if (sug.type === 'member') {
-                                                    window.location.href = `/member/${sug.label.toLowerCase()}`;
+                                                    window.location.href = `/member/${sug.id}`;
                                                 } else {
                                                     setSearchTerm(sug.label);
                                                 }
