@@ -41,37 +41,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     useEffect(() => {
-        const getInitialSession = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                const currUser = session?.user ?? null;
-                setUser(currUser);
-                if (currUser) await refreshMember(currUser);
-            } catch (err) {
-                console.error("Auth initialization error:", err);
-            } finally {
+        let isMounted = true;
+
+        // GLOBAL SAFETY TIMEOUT: Force loading false after 10s no matter what
+        const safetyTimeout = setTimeout(() => {
+            if (isMounted && loading) {
+                console.warn("🔐 Auth: Safety timeout reached. Forcing loading false.");
                 setLoading(false);
+            }
+        }, 10000);
+
+        const getInitialSession = async () => {
+            console.log("🔐 Auth: Getting initial session...");
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) throw error;
+
+                const currUser = session?.user ?? null;
+                if (isMounted) {
+                    setUser(currUser);
+                    if (currUser) {
+                        console.log("🔐 Auth: User found, fetching member...");
+                        await refreshMember(currUser);
+                    } else {
+                        console.log("🔐 Auth: No user found in session.");
+                    }
+                }
+            } catch (err) {
+                console.error("🔐 Auth: Initialization error:", err);
+            } finally {
+                if (isMounted) {
+                    console.log("🔐 Auth: Initialization sequence finished.");
+                    setLoading(false);
+                    clearTimeout(safetyTimeout);
+                }
             }
         };
 
         getInitialSession();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log(`🔐 Auth Event: ${event}`);
+
             // Skip INITIAL_SESSION - already handled by getInitialSession()
             if (event === 'INITIAL_SESSION') return;
 
             const currUser = session?.user ?? null;
-            setUser(currUser);
-            if (currUser) {
-                await refreshMember(currUser);
-            } else {
-                setMember(null);
+            if (isMounted) {
+                setUser(currUser);
+                if (currUser) {
+                    await refreshMember(currUser);
+                } else {
+                    setMember(null);
+                }
+                setLoading(false);
+                clearTimeout(safetyTimeout);
             }
-            setLoading(false);
         });
 
         return () => {
+            isMounted = false;
             subscription.unsubscribe();
+            clearTimeout(safetyTimeout);
         };
     }, []);
 
