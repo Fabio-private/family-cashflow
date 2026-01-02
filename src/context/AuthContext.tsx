@@ -42,11 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         const getInitialSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            const currUser = session?.user ?? null;
-            setUser(currUser);
-            if (currUser) await refreshMember(currUser);
-            setLoading(false);
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                const currUser = session?.user ?? null;
+                setUser(currUser);
+                if (currUser) await refreshMember(currUser);
+            } catch (err) {
+                console.error("Auth initialization error:", err);
+            } finally {
+                setLoading(false);
+            }
         };
 
         getInitialSession();
