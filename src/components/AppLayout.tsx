@@ -12,21 +12,18 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export function AppLayout({ children }: AppLayoutProps) {
-    const { user, member, loading } = useAuth();
+    const { member, loading } = useAuth();
     const pathname = usePathname();
     const router = useRouter();
-    const isAuthPage = pathname?.startsWith("/auth");
+    const isPublicPage = pathname === "/select-profile";
 
     useEffect(() => {
         if (!loading) {
-            if (!user && !isAuthPage) {
-                router.push("/auth/login");
-            } else if (user && !member && !isAuthPage) {
-                // User is logged in but has no family profile yet
-                router.push("/auth/profile-setup");
+            if (!member && !isPublicPage) {
+                router.push("/select-profile");
             }
         }
-    }, [user, member, loading, isAuthPage, router]);
+    }, [member, loading, isPublicPage, router]);
 
     if (loading) {
         return (
@@ -36,11 +33,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         );
     }
 
-    if (isAuthPage) {
+    if (isPublicPage) {
         return <>{children}</>;
     }
 
-    if (!user) return null;
+    if (!member) return null;
 
     return (
         <div className="flex h-screen w-full bg-[#f1f5f9] overflow-hidden flex-col md:flex-row">
