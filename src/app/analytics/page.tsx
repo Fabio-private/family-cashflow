@@ -42,6 +42,8 @@ export default function AnalyticsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
 
+
+
     const fetchData = useCallback(async () => {
         if (!member?.family_id) return;
         setIsLoading(true);
@@ -50,7 +52,7 @@ export default function AnalyticsPage() {
 
         const { data: txData } = await supabase
             .from("transactions")
-            .select("*, categories(name)")
+            .select("*, categories(name), accounts(id, name, owner_id)")
             .eq("family_id", member.family_id)
             .gte("date", start)
             .lte("date", end);
@@ -76,7 +78,24 @@ export default function AnalyticsPage() {
         fetchData();
     }, [fetchData]);
 
-    // 1. Data per Mese (Bar Chart)
+    // --- FAMILY BUDGET LOGIC ---
+    const familyTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            if (t.type === 'income') return true;
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+
+            const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
+            const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
+
+            if (isFromJointAccount || isMealVoucher) return true;
+            if (t.beneficiary_id === null) return true; // Famiglia
+            if (t.beneficiary_id !== t.payer_id) return true; // Paid for someone else
+
+            return false;
+        });
+    }, [transactions]);
+
+    // 1. Data per Mese (Bar Chart) - Calculated from familyTransactions
     const monthlyData = useMemo(() => {
         const months = eachMonthOfInterval({
             start: new Date(parseInt(selectedYear), 0, 1),
@@ -87,9 +106,9 @@ export default function AnalyticsPage() {
             const mKey = format(m, "yyyy-MM");
             const mLabel = format(m, "MMM", { locale: it });
 
-            const monthSum = summary.filter(s => s.month === mKey);
-            const income = monthSum.filter(s => s.type === 'income').reduce((acc, curr) => acc + Number(curr.total_amount), 0);
-            const expense = monthSum.filter(s => s.type === 'expense').reduce((acc, curr) => acc + Number(curr.total_amount), 0);
+            const monthTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === mKey);
+            const income = monthTxs.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
+            const expense = monthTxs.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
             return {
                 name: mLabel,
@@ -98,11 +117,11 @@ export default function AnalyticsPage() {
                 balance: income - expense
             };
         });
-    }, [summary, selectedYear]);
+    }, [familyTransactions, selectedYear]);
 
     // 2. Data per Categoria (Pie Chart) - Solo Spese
     const categoryData = useMemo(() => {
-        const expenses = transactions.filter(t => t.type === 'expense');
+        const expenses = familyTransactions.filter(t => t.type === 'expense');
         const grouped = expenses.reduce((acc: any, curr) => {
             const catName = curr.categories?.name || "Altro";
             acc[catName] = (acc[catName] || 0) + Number(curr.amount);
@@ -112,7 +131,7 @@ export default function AnalyticsPage() {
         return Object.entries(grouped)
             .map(([name, value]) => ({ name, value: Number(value) }))
             .sort((a, b) => b.value - a.value);
-    }, [transactions]);
+    }, [familyTransactions]);
 
     const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
 

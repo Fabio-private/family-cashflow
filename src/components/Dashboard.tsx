@@ -116,6 +116,32 @@ export default function Dashboard() {
     const [searchTerm, setSearchTerm] = useState("");
     const [showSuggestions, setShowSuggestions] = useState(false);
 
+    // --- FAMILY BUDGET LOGIC ---
+    // A transaction is for the "Family Budget" if:
+    // 1. It's an Income (always family revenue)
+    // 2. It's an Expense where:
+    //    - Beneficiary is NULL (Family)
+    //    - OR Beneficiary is different from Payer (one person paying for someone else or children)
+    //    - OR It's from a Joint Account (owner_id is NULL)
+    //    - OR It's from a Meal Voucher account (Buoni Pasto)
+    const familyTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            if (t.type === 'income') return true;
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+
+            const isPersonal = t.beneficiary_id === t.payer_id && t.beneficiary_id !== null;
+            const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
+            const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
+
+            // Include if NOT personal OR if from Joint/Meal Voucher account
+            if (isFromJointAccount || isMealVoucher) return true;
+            if (t.beneficiary_id === null) return true; // Famiglia
+            if (t.beneficiary_id !== t.payer_id) return true; // Paid for someone else
+
+            return false;
+        });
+    }, [transactions]);
+
     const fetchData = useCallback(async () => {
         if (!member?.family_id) return;
 
@@ -238,17 +264,26 @@ export default function Dashboard() {
     }, [isLoading, transactions.length, categories.length, processFixedItems]);
 
     const stats = useMemo(() => {
-        const validTxs = transactions.filter(t => !t.categories?.name?.toLowerCase().includes('giroconto'));
+        const now = new Date();
+        const currentMonthStr = format(now, "yyyy-MM");
+        const prevMonthStr = format(subMonths(now, 1), "yyyy-MM");
 
-        const income = validTxs
+        const currentTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === currentMonthStr);
+        const prevTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === prevMonthStr);
+
+        const income = currentTxs
             .filter(t => t.type === 'income')
             .reduce((sum, t) => sum + Number(t.amount), 0);
-        const expense = validTxs
+        const expense = currentTxs
             .filter(t => t.type === 'expense')
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
-        const prevIncome = prevSummary.filter(s => s.type === 'income').reduce((acc, curr) => acc + Number(curr.total_amount), 0);
-        const prevExpense = prevSummary.filter(s => s.type === 'expense').reduce((acc, curr) => acc + Number(curr.total_amount), 0);
+        const prevIncome = prevTxs
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + Number(t.amount), 0);
+        const prevExpense = prevTxs
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Number(t.amount), 0);
 
         const calculateTrend = (curr: number, prev: number) => {
             if (prev === 0) return 0;
@@ -263,25 +298,23 @@ export default function Dashboard() {
             expenseTrend: calculateTrend(expense, prevExpense),
             balanceTrend: calculateTrend(income - expense, prevIncome - prevExpense)
         };
-    }, [summary, prevSummary, transactions]);
+    }, [familyTransactions]);
 
     const buoniPastoBalance = useMemo(() => {
         const bpAccountNames = ["Buoni Pasto Fabio", "Buoni pasto Fabio"];
-        const bpIncome = transactions
+        const bpIncome = familyTransactions
             .filter(t => t.type === 'income' && bpAccountNames.includes(t.accounts?.name || ""))
             .reduce((acc, curr) => acc + Number(curr.amount), 0);
 
-        const validTxs = transactions.filter(t => !t.categories?.name?.toLowerCase().includes('giroconto'));
-
-        const bpExpense = validTxs
+        const bpExpense = familyTransactions
             .filter(t => t.type === 'expense' && bpAccountNames.includes(t.accounts?.name || ""))
             .reduce((acc, curr) => acc + Number(curr.amount), 0);
         return bpIncome - bpExpense;
-    }, [transactions]);
+    }, [familyTransactions]);
 
     const dynamicBudget = useMemo(() => {
         const now = new Date();
-        const currentMonthTransactions = transactions.filter(t =>
+        const currentMonthTransactions = familyTransactions.filter(t =>
             format(new Date(t.date), "yyyy-MM") === format(now, "yyyy-MM")
         );
 
@@ -303,17 +336,15 @@ export default function Dashboard() {
             .reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         return incomeFromSources + incomeFromBonus;
-    }, [transactions]);
+    }, [familyTransactions]);
 
     const chartData = useMemo(() => {
         const start = startOfWeek(new Date(), { weekStartsOn: 1 });
         const end = endOfWeek(new Date(), { weekStartsOn: 1 });
         const days = eachDayOfInterval({ start, end });
 
-        const validTxs = transactions.filter(t => !t.categories?.name?.toLowerCase().includes('giroconto'));
-
         return days.map(day => {
-            const dailyTx = validTxs.filter(t => isSameDay(new Date(t.date), day));
+            const dailyTx = familyTransactions.filter(t => isSameDay(new Date(t.date), day));
             const income = dailyTx.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
             const expense = dailyTx.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
@@ -323,22 +354,22 @@ export default function Dashboard() {
                 expense
             };
         });
-    }, [transactions]);
+    }, [familyTransactions]);
 
     const currentMonthLabel = useMemo(() => {
         return format(new Date(), "MMMM yyyy", { locale: it });
     }, []);
 
     const filteredTransactions = useMemo(() => {
-        if (!searchTerm) return transactions.slice(0, 10);
+        if (!searchTerm) return familyTransactions.slice(0, 10);
         const lowerTerm = searchTerm.toLowerCase();
-        return transactions.filter(tx =>
+        return familyTransactions.filter(tx =>
             (tx.description?.toLowerCase().includes(lowerTerm)) ||
             (tx.categories?.name?.toLowerCase().includes(lowerTerm)) ||
             (tx.payer?.name?.toLowerCase().includes(lowerTerm)) ||
             (tx.beneficiary?.name?.toLowerCase().includes(lowerTerm))
         ).slice(0, 20);
-    }, [transactions, searchTerm]);
+    }, [familyTransactions, searchTerm]);
 
     const suggestions = useMemo(() => {
         if (!searchTerm || searchTerm.length < 2) return [];
@@ -364,10 +395,10 @@ export default function Dashboard() {
         const fabio = members.find(m => m.name?.trim().toLowerCase() === 'fabio');
         const giulia = members.find(m => m.name?.trim().toLowerCase() === 'giulia');
 
-        if (!fabio || !giulia || transactions.length === 0) return null;
+        if (!fabio || !giulia || familyTransactions.length === 0) return null;
 
         const now = new Date();
-        const currentMonthExpenses = transactions.filter(t => {
+        const currentMonthExpenses = familyTransactions.filter(t => {
             const tDate = new Date(t.date);
             const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
             return t.type === 'expense' &&
@@ -393,7 +424,7 @@ export default function Dashboard() {
             netBalance,
             totalActivity: fabioPaidCommon + giuliaPaidCommon + fabioPaidForGiulia + giuliaPaidForFabio
         };
-    }, [transactions, members]);
+    }, [familyTransactions, members]);
 
     const contributionStatus = useMemo(() => {
         const now = new Date();
