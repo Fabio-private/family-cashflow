@@ -52,7 +52,7 @@ export default function MemberPage({ params }: { params: Promise<{ id: string }>
             // 2. Fetch transactions where member is payer OR beneficiary
             const { data: txData } = await supabase
                 .from("transactions")
-                .select("*, categories(name), payer:family_members!payer_id(name, id), beneficiary:family_members!beneficiary_id(name, id)")
+                .select("*, categories(name), payer:family_members!payer_id(name, id), beneficiary:family_members!beneficiary_id(name, id), accounts(name)")
                 .or(`payer_id.eq.${memberId},beneficiary_id.eq.${memberId}`)
                 .order("date", { ascending: false });
 
@@ -78,7 +78,8 @@ export default function MemberPage({ params }: { params: Promise<{ id: string }>
     const stats = useMemo(() => {
         const incomeTxs = transactions.filter(t =>
             t.type === 'income' &&
-            !t.categories?.name?.toLowerCase().includes('giroconto')
+            !t.categories?.name?.toLowerCase().includes('giroconto') &&
+            !t.accounts?.name?.toLowerCase().includes('buoni pasto')
         );
         const expenseTxs = transactions.filter(t => t.type === 'expense');
 
