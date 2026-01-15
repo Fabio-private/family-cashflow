@@ -24,7 +24,8 @@ import {
     Tag,
     FileText,
     BarChart3,
-    UtensilsCrossed
+    UtensilsCrossed,
+    Receipt
 } from "lucide-react";
 import { AddTransactionModal } from "./AddTransactionModal";
 
@@ -46,6 +47,11 @@ export default function Dashboard() {
     const [showSuggestions, setShowSuggestions] = useState(false);
 
     // --- FAMILY BUDGET LOGIC ---
+    // Le spese familiari includono SOLO:
+    // 1. Entrate/Uscite da conto cointestato o Buoni Pasto
+    // 2. Spese con beneficiario "Famiglia" (beneficiary_id = null)
+    // NON includono spese da conto personale per altri membri (es. Federico, Ludovica, Dante)
+    // perché quelle sono spese personali di chi ha pagato
     const familyTransactions = useMemo(() => {
         return transactions.filter(t => {
             const isJointAccount = t.accounts && t.accounts.owner_id === null;
@@ -55,14 +61,16 @@ export default function Dashboard() {
                 return isJointAccount || isMealVoucher;
             }
 
-            // Exclude transfers (unless it's an expense from a joint account?) 
-            // Usually giroconto between member and joint is marked as income on joint.
+            // Exclude transfers (giroconto)
             if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
 
-            // Include if from Joint/Meal Voucher account
+            // Include if from Joint/Meal Voucher account (regardless of beneficiary)
             if (isJointAccount || isMealVoucher) return true;
-            if (t.beneficiary_id === null) return true; // Famiglia
-            if (t.beneficiary_id !== t.payer_id) return true; // Paid for someone else
+
+            // Include ONLY if beneficiary is "Famiglia" (null) from personal account
+            // Do NOT include personal account expenses for specific family members
+            // (those should only show in the payer's personal expenses)
+            if (t.beneficiary_id === null) return true;
 
             return false;
         });
@@ -234,6 +242,42 @@ export default function Dashboard() {
             balanceTrend: calculateTrend(income - expense, prevIncome - prevExpense)
         };
     }, [familyTransactions]);
+
+    // Spese Totali Effettive: TUTTE le spese per la famiglia
+    // Include sia spese da conto cointestato che spese da conti personali per altri membri
+    const effectiveTotalExpenses = useMemo(() => {
+        const now = new Date();
+        const currentMonthStr = format(now, "yyyy-MM");
+        const prevMonthStr = format(subMonths(now, 1), "yyyy-MM");
+
+        // Filtro per tutte le spese "per la famiglia":
+        // 1. Spese con beneficiario null (Famiglia)
+        // 2. Spese con beneficiario diverso dal pagante (pagato per altri)
+        // Escluso: spese personali (beneficiary_id === payer_id) e giroconti
+        const allFamilyExpenses = transactions.filter(t => {
+            if (t.type !== 'expense') return false;
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+
+            // Include se beneficiario è "Famiglia" (null)
+            if (t.beneficiary_id === null) return true;
+            // Include se pagato per qualcun altro (es. Fabio paga per Federico)
+            if (t.beneficiary_id !== t.payer_id) return true;
+
+            return false;
+        });
+
+        const currentMonthTotal = allFamilyExpenses
+            .filter(t => format(new Date(t.date), "yyyy-MM") === currentMonthStr)
+            .reduce((sum, t) => sum + Number(t.amount), 0);
+
+        const prevMonthTotal = allFamilyExpenses
+            .filter(t => format(new Date(t.date), "yyyy-MM") === prevMonthStr)
+            .reduce((sum, t) => sum + Number(t.amount), 0);
+
+        const trend = prevMonthTotal === 0 ? 0 : ((currentMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
+
+        return { total: currentMonthTotal, trend };
+    }, [transactions]);
 
     const familyMemberSummary = useMemo(() => {
         const now = new Date();
@@ -546,7 +590,7 @@ export default function Dashboard() {
                 </div>
             </div>
             {/* 2. Primary Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 md:gap-6">
                 <MetricCard
                     label="Budget Disponibile"
                     value={stats.income}
@@ -560,6 +604,13 @@ export default function Dashboard() {
                     icon={TrendingDown}
                     color="rose"
                     trend={`${stats.expenseTrend > 0 ? '+' : ''}${stats.expenseTrend.toFixed(0)}% vs mese scorso`}
+                />
+                <MetricCard
+                    label="Spese Totali Effettive"
+                    value={effectiveTotalExpenses.total}
+                    icon={Receipt}
+                    color="orange"
+                    trend={`${effectiveTotalExpenses.trend > 0 ? '+' : ''}${effectiveTotalExpenses.trend.toFixed(0)}% vs mese scorso`}
                 />
                 <MetricCard
                     label="Bilancio Netto"
@@ -761,7 +812,9 @@ function MetricCard({ label, value, icon: Icon, color, trend, isNumber = false }
         emerald: "bg-emerald-50 text-emerald-600 shadow-emerald-50",
         rose: "bg-rose-50 text-rose-500 shadow-rose-50",
         indigo: "bg-indigo-50 text-indigo-600 shadow-indigo-50",
-        violet: "bg-violet-50 text-violet-600 shadow-violet-50"
+        violet: "bg-violet-50 text-violet-600 shadow-violet-50",
+        orange: "bg-orange-50 text-orange-600 shadow-orange-50",
+        amber: "bg-amber-50 text-amber-600 shadow-amber-50"
     };
 
     return (
