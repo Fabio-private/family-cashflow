@@ -68,9 +68,8 @@ export default function Dashboard() {
             if (isJointAccount || isMealVoucher) return true;
 
             // Include ONLY if beneficiary is "Famiglia" (null) from personal account
-            // Do NOT include personal account expenses for specific family members
-            // (those should only show in the payer's personal expenses)
-            if (t.beneficiary_id === null) return true;
+            // OR if paying for another member (e.g. child, partner)
+            if (t.beneficiary_id === null || t.beneficiary_id !== t.payer_id) return true;
 
             return false;
         });
@@ -407,7 +406,8 @@ export default function Dashboard() {
                 !isFromJointAccount;
         });
 
-        const commonExpenses = currentMonthExpenses.filter(t => !t.beneficiary_id);
+        const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
+        const commonExpenses = currentMonthExpenses.filter(t => !t.beneficiary_id || childrenIds.includes(t.beneficiary_id));
         const fabioPaidCommon = commonExpenses.filter(t => t.payer_id === fabio.id).reduce((acc, t) => acc + Number(t.amount), 0);
         const giuliaPaidCommon = commonExpenses.filter(t => t.payer_id === giulia.id).reduce((acc, t) => acc + Number(t.amount), 0);
 
