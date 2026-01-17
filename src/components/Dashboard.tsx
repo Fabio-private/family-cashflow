@@ -208,23 +208,41 @@ export default function Dashboard() {
         const currentMonthStr = format(now, "yyyy-MM");
         const prevMonthStr = format(subMonths(now, 1), "yyyy-MM");
 
-        const currentTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === currentMonthStr);
-        const prevTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === prevMonthStr);
+        // Get children IDs (Federico, Ludovica, Dante)
+        const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
+
+        // Helper: check if expense is for family (null) or children
+        const isFamilyOrChildExpense = (t: Transaction) => {
+            if (t.type !== 'expense') return false;
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+            // Famiglia (null) or for a child
+            return t.beneficiary_id === null || childrenIds.includes(t.beneficiary_id);
+        };
+
+        // Helper: check if from Fideuram joint account
+        const isFromFideuram = (t: Transaction) => {
+            const acctName = t.accounts?.name?.toLowerCase() || '';
+            return acctName.includes('fideuram') || acctName.includes('condiviso');
+        };
+
+        const currentTxs = transactions.filter(t => format(new Date(t.date), "yyyy-MM") === currentMonthStr);
+        const prevTxs = transactions.filter(t => format(new Date(t.date), "yyyy-MM") === prevMonthStr);
 
         // Budget Disponibile = Incomes to Joint accounts (EXCLUDING Meal Vouchers)
         const income = currentTxs
-            .filter(t => t.type === 'income' && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
+            .filter(t => t.type === 'income' && isFromFideuram(t) && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
+        // Spese Totali (Famiglia) = Only from Fideuram, for Famiglia or children
         const expense = currentTxs
-            .filter(t => t.type === 'expense')
+            .filter(t => isFamilyOrChildExpense(t) && isFromFideuram(t))
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
         const prevIncome = prevTxs
-            .filter(t => t.type === 'income' && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
+            .filter(t => t.type === 'income' && isFromFideuram(t) && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
             .reduce((sum, t) => sum + Number(t.amount), 0);
         const prevExpense = prevTxs
-            .filter(t => t.type === 'expense')
+            .filter(t => isFamilyOrChildExpense(t) && isFromFideuram(t))
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
         const calculateTrend = (curr: number, prev: number) => {
@@ -234,35 +252,34 @@ export default function Dashboard() {
 
         return {
             income, // This is "Budget Disponibile"
-            expense, // This is "Spese Totali"
+            expense, // This is "Spese Totali (Famiglia)" - only Fideuram
             balance: income - expense, // This is "Bilancio Netto"
             incomeTrend: calculateTrend(income, prevIncome),
             expenseTrend: calculateTrend(expense, prevExpense),
             balanceTrend: calculateTrend(income - expense, prevIncome - prevExpense)
         };
-    }, [familyTransactions]);
+    }, [transactions, members]);
 
-    // Spese Totali Effettive: TUTTE le spese per la famiglia
-    // Include sia spese da conto cointestato che spese da conti personali per altri membri
+    // Spese Totali Effettive: TUTTE le spese per la famiglia da TUTTI i conti
+    // Include spese da conto cointestato E da conti personali per famiglia/figli
     const effectiveTotalExpenses = useMemo(() => {
         const now = new Date();
         const currentMonthStr = format(now, "yyyy-MM");
         const prevMonthStr = format(subMonths(now, 1), "yyyy-MM");
 
-        // Filtro per tutte le spese "per la famiglia":
+        // Get children IDs
+        const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
+
+        // Filtro per tutte le spese "per la famiglia" da qualsiasi conto:
         // 1. Spese con beneficiario null (Famiglia)
-        // 2. Spese con beneficiario diverso dal pagante (pagato per altri)
-        // Escluso: spese personali (beneficiary_id === payer_id) e giroconti
+        // 2. Spese per figli (Federico, Ludovica, Dante)
+        // Escluso: giroconti
         const allFamilyExpenses = transactions.filter(t => {
             if (t.type !== 'expense') return false;
             if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
 
-            // Include se beneficiario è "Famiglia" (null)
-            if (t.beneficiary_id === null) return true;
-            // Include se pagato per qualcun altro (es. Fabio paga per Federico)
-            if (t.beneficiary_id !== t.payer_id) return true;
-
-            return false;
+            // Include se beneficiario è "Famiglia" (null) o un figlio
+            return t.beneficiary_id === null || childrenIds.includes(t.beneficiary_id);
         });
 
         const currentMonthTotal = allFamilyExpenses
@@ -276,7 +293,7 @@ export default function Dashboard() {
         const trend = prevMonthTotal === 0 ? 0 : ((currentMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
 
         return { total: currentMonthTotal, trend };
-    }, [transactions]);
+    }, [transactions, members]);
 
     const familyMemberSummary = useMemo(() => {
         const now = new Date();
