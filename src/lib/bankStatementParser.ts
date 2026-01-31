@@ -26,29 +26,63 @@ export async function parseExcelFile(file: File): Promise<BankTransaction[]> {
                 // Find header row and data rows
                 const transactions: BankTransaction[] = [];
 
-                // Skip empty rows and look for data
+                // Fideuram format: data can be in various columns, need to scan all
                 for (let i = 0; i < rows.length; i++) {
                     const row = rows[i];
 
                     // Skip completely empty rows
                     if (!row || row.every(cell => !cell)) continue;
 
-                    // Try to parse as transaction
-                    // Expected format: [Date, Description, Currency, Amount, ...]
-                    const dateStr = row[0];
-                    const description = row[1] || '';
-                    const amountStr = row[3]; // Amount is usually in column 3 or 4
+                    // Try to find date, description and amount by scanning all columns
+                    let dateStr: string | null = null;
+                    let description = '';
+                    let amountStr: string | number | null = null;
 
-                    // Validate date and amount
+                    for (let colIdx = 0; colIdx < row.length; colIdx++) {
+                        const cell = row[colIdx];
+                        if (!cell) continue;
+
+                        const cellStr = String(cell).trim();
+
+                        // Try to identify if it's a date (DD/MM/YYYY or Excel number)
+                        if (!dateStr) {
+                            if (cellStr.match(/\d{1,2}\/\d{1,2}\/\d{4}/) || (typeof cell === 'number' && cell > 40000 && cell < 50000)) {
+                                const parsedDate = parseDateString(cell);
+                                if (parsedDate) {
+                                    dateStr = cell;
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Try to identify if it's an amount (number with possible - sign, comma/dot decimal)
+                        if (!amountStr && cellStr.match(/^-?\d+[.,]?\d*$/)) {
+                            const parsedAmount = parseAmountString(cell);
+                            if (!isNaN(parsedAmount) && parsedAmount !== 0) {
+                                amountStr = cell;
+                                continue;
+                            }
+                        }
+
+                        // Skip currency cells and short codes
+                        if (cellStr === 'EUR' || cellStr === 'USD' || cellStr.length < 3) continue;
+
+                        // Otherwise, it might be description (if it's a longer string)
+                        if (!description && cellStr.length >= 3 && !cellStr.match(/^\d+$/)) {
+                            description = cellStr;
+                        }
+                    }
+
+                    // Validate we have date and amount
                     if (dateStr && amountStr) {
                         const parsedDate = parseDateString(dateStr);
                         const parsedAmount = parseAmountString(amountStr);
 
-                        if (parsedDate && !isNaN(parsedAmount)) {
+                        if (parsedDate && !isNaN(parsedAmount) && parsedAmount !== 0) {
                             transactions.push({
                                 id: `bank_${i}_${Date.now()}`,
                                 date: parsedDate,
-                                description: String(description).trim(),
+                                description: description || 'Transazione bancaria',
                                 amount: parsedAmount,
                                 raw: row
                             });
