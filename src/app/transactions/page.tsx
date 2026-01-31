@@ -29,6 +29,7 @@ export default function TransactionsPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [members, setMembers] = useState<FamilyMember[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [accounts, setAccounts] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -37,6 +38,11 @@ export default function TransactionsPage() {
     const [selectedMember, setSelectedMember] = useState<string>("all");
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
     const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), "yyyy-MM"));
+    const [selectedAccount, setSelectedAccount] = useState<string>("all");
+    const [selectedBeneficiary, setSelectedBeneficiary] = useState<string>("all");
+    const [selectedType, setSelectedType] = useState<string>("all");
+    const [filterDateFrom, setFilterDateFrom] = useState<string>("");
+    const [filterDateTo, setFilterDateTo] = useState<string>("");
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
 
@@ -46,8 +52,10 @@ export default function TransactionsPage() {
 
         const { data: mData } = await supabase.from("family_members").select("*").eq("family_id", member.family_id).order("name");
         const { data: cData } = await supabase.from("categories").select("*").eq("family_id", member.family_id).order("name");
+        const { data: aData } = await supabase.from("accounts").select("*").eq("family_id", member.family_id).order("name");
         if (mData) setMembers(mData);
         if (cData) setCategories(cData);
+        if (aData) setAccounts(aData);
 
         let query = supabase
             .from("transactions")
@@ -102,6 +110,44 @@ export default function TransactionsPage() {
         return [...memberSugs, ...catSugs, ...descSugs].slice(0, 6);
     }, [searchTerm, members, categories, transactions]);
 
+    // Apply additional filters client-side
+    const filteredTransactions = useMemo(() => {
+        return transactions.filter(tx => {
+            // Account filter
+            if (selectedAccount !== "all" && tx.account_id !== selectedAccount) return false;
+
+            // Beneficiary filter
+            if (selectedBeneficiary !== "all" && tx.beneficiary_id !== selectedBeneficiary) return false;
+
+            // Type filter
+            if (selectedType !== "all" && tx.type !== selectedType) return false;
+
+            // Date range filter
+            if (filterDateFrom && tx.date < filterDateFrom) return false;
+            if (filterDateTo && tx.date > filterDateTo) return false;
+
+            return true;
+        });
+    }, [transactions, selectedAccount, selectedBeneficiary, selectedType, filterDateFrom, filterDateTo]);
+
+    // Calculate totals based on filtered transactions
+    const totals = useMemo(() => {
+        const income = filteredTransactions
+            .filter(tx => tx.type === 'income')
+            .reduce((sum, tx) => sum + tx.amount, 0);
+
+        const expenses = filteredTransactions
+            .filter(tx => tx.type === 'expense')
+            .reduce((sum, tx) => sum + tx.amount, 0);
+
+        return {
+            income,
+            expenses,
+            balance: income - expenses,
+            count: filteredTransactions.length
+        };
+    }, [filteredTransactions]);
+
     const handleDelete = async (id: string) => {
         if (!confirm("Sei sicuro di voler eliminare questa transazione?")) return;
         const { error } = await supabase.from("transactions").delete().eq("id", id);
@@ -129,9 +175,30 @@ export default function TransactionsPage() {
             </div>
 
             {/* Filters Bar */}
-            <div className="soft-card p-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="relative">
+            <div className="soft-card p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest">🔍 Filtri</h3>
+                    <button
+                        onClick={() => {
+                            setSearchTerm("");
+                            setSelectedMember("all");
+                            setSelectedCategory("all");
+                            setSelectedAccount("all");
+                            setSelectedBeneficiary("all");
+                            setSelectedType("all");
+                            setSelectedMonth(format(new Date(), "yyyy-MM"));
+                            setFilterDateFrom("");
+                            setFilterDateTo("");
+                        }}
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700 underline"
+                    >
+                        Reset Filtri
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Search */}
+                    <div className="relative md:col-span-3">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                         <input
                             type="text"
@@ -175,6 +242,8 @@ export default function TransactionsPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* Member filter */}
                     <select
                         value={selectedMember}
                         onChange={(e) => setSelectedMember(e.target.value)}
@@ -183,6 +252,8 @@ export default function TransactionsPage() {
                         <option value="all">Tutti i membri</option>
                         {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
+
+                    {/* Category filter */}
                     <select
                         value={selectedCategory}
                         onChange={(e) => setSelectedCategory(e.target.value)}
@@ -191,12 +262,67 @@ export default function TransactionsPage() {
                         <option value="all">Tutte le categorie</option>
                         {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
+
+                    {/* Account filter */}
+                    <select
+                        value={selectedAccount}
+                        onChange={(e) => setSelectedAccount(e.target.value)}
+                        className="bg-slate-50 border-none rounded-xl py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-indigo-100 appearance-none"
+                    >
+                        <option value="all">Tutti i conti</option>
+                        {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+
+                    {/* Beneficiary filter */}
+                    <select
+                        value={selectedBeneficiary}
+                        onChange={(e) => setSelectedBeneficiary(e.target.value)}
+                        className="bg-slate-50 border-none rounded-xl py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-indigo-100 appearance-none"
+                    >
+                        <option value="all">Tutti i beneficiari</option>
+                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+
+                    {/* Type filter */}
+                    <select
+                        value={selectedType}
+                        onChange={(e) => setSelectedType(e.target.value)}
+                        className="bg-slate-50 border-none rounded-xl py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-indigo-100 appearance-none"
+                    >
+                        <option value="all">Entrate & Uscite</option>
+                        <option value="income">Solo Entrate</option>
+                        <option value="expense">Solo Uscite</option>
+                    </select>
+
+                    {/* Month filter */}
                     <input
                         type="month"
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
                         className="bg-slate-50 border-none rounded-xl py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-indigo-100"
                     />
+
+                    {/* Date From */}
+                    <div>
+                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 pl-1">Data da</label>
+                        <input
+                            type="date"
+                            value={filterDateFrom}
+                            onChange={(e) => setFilterDateFrom(e.target.value)}
+                            className="w-full bg-slate-50 border-none rounded-xl py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-indigo-100"
+                        />
+                    </div>
+
+                    {/* Date To */}
+                    <div>
+                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 pl-1">Data a</label>
+                        <input
+                            type="date"
+                            value={filterDateTo}
+                            onChange={(e) => setFilterDateTo(e.target.value)}
+                            className="w-full bg-slate-50 border-none rounded-xl py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-indigo-100"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -224,7 +350,7 @@ export default function TransactionsPage() {
                                     </tr>
                                 ))
                             ) : (
-                                transactions.map((tx) => (
+                                filteredTransactions.map((tx) => (
                                     <tr key={tx.id} className="group hover:bg-slate-50/50 transition-colors">
                                         <td className="px-8 py-6">
                                             <div className="flex flex-col">
@@ -297,6 +423,37 @@ export default function TransactionsPage() {
                 </div>
             </div>
 
+            {/* Totals Section */}
+            <div className="soft-card p-6 bg-gradient-to-r from-indigo-50 to-violet-50 border-2 border-indigo-100">
+                <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">💰 Totali{filteredTransactions.length !== transactions.length && ' (basati su filtri)'}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="flex flex-col">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Entrate</span>
+                        <p className="text-3xl font-black text-emerald-600">
+                            {totals.income.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Uscite</span>
+                        <p className="text-3xl font-black text-rose-600">
+                            -{totals.expenses.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Bilancio</span>
+                        <p className={`text-3xl font-black ${totals.balance >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>
+                            {totals.balance.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Transazioni</span>
+                        <p className="text-3xl font-black text-slate-700">
+                            {totals.count}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             {(isModalOpen || transactionToEdit) && (
                 <AddTransactionModal
                     onClose={() => {
@@ -314,3 +471,4 @@ export default function TransactionsPage() {
         </div>
     );
 }
+
