@@ -38,6 +38,7 @@ export default function TransactionsPage() {
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
     const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), "yyyy-MM"));
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
 
     const fetchData = useCallback(async () => {
         if (!member?.family_id) return;
@@ -256,7 +257,10 @@ export default function TransactionsPage() {
                                         </td>
                                         <td className="px-8 py-6 text-right opacity-0 group-hover:opacity-100 transition-all">
                                             <div className="flex items-center justify-end gap-2">
-                                                <button className="p-2 text-slate-300 hover:text-indigo-600 transition-colors">
+                                                <button
+                                                    onClick={() => setTransactionToEdit(tx)}
+                                                    className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                                >
                                                     <Edit3 size={16} />
                                                 </button>
                                                 <button
@@ -287,13 +291,18 @@ export default function TransactionsPage() {
                 </div>
             </div>
 
-            {isModalOpen && (
+            {(isModalOpen || transactionToEdit) && (
                 <AddTransactionModal
-                    onClose={() => setIsModalOpen(false)}
+                    onClose={() => {
+                        setIsModalOpen(false);
+                        setTransactionToEdit(null);
+                    }}
                     onSuccess={() => {
                         fetchData();
                         setIsModalOpen(false);
+                        setTransactionToEdit(null);
                     }}
+                    transactionToEdit={transactionToEdit}
                 />
             )}
         </div>

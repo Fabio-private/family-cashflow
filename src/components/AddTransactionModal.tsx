@@ -10,9 +10,10 @@ interface AddTransactionModalProps {
     onClose: () => void;
     onSuccess: () => void;
     initialIsRecurring?: boolean;
+    transactionToEdit?: Transaction | null;
 }
 
-export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = false }: AddTransactionModalProps) {
+export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = false, transactionToEdit }: AddTransactionModalProps) {
     const { member } = useAuth();
     const [members, setMembers] = useState<FamilyMember[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
@@ -30,6 +31,8 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
     const [isRecurring, setIsRecurring] = useState(initialIsRecurring);
     const [allTransactions, setAllTransactions] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+
+    const isEditMode = !!transactionToEdit;
 
     useEffect(() => {
         async function fetchData() {
@@ -57,6 +60,22 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
         }
         fetchData();
     }, [member?.family_id, member?.id]);
+
+    // Pre-populate fields when editing
+    useEffect(() => {
+        if (transactionToEdit) {
+            setAmount(transactionToEdit.amount.toString());
+            setDescription(transactionToEdit.description || "");
+            setType(transactionToEdit.type);
+            setCategoryId(transactionToEdit.category_id || "");
+            setPayerId(transactionToEdit.payer_id || "");
+            setBeneficiaryId(transactionToEdit.beneficiary_id || "");
+            setAccountId(transactionToEdit.account_id || "");
+            setDate(transactionToEdit.date);
+            // Don't allow recurring toggle in edit mode
+            setIsRecurring(false);
+        }
+    }, [transactionToEdit]);
 
     // 1. Sync Payer based on Account (Primary Logic)
     useEffect(() => {
@@ -107,50 +126,11 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
 
         setLoading(true);
 
-        const transactionsToInsert = [];
-
-        // Primary Transaction
-        transactionsToInsert.push({
-            amount: parseFloat(amount),
-            description,
-            type,
-            category_id: categoryId || null,
-            payer_id: payerId,
-            beneficiary_id: beneficiaryId || null,
-            account_id: accountId || null,
-            family_id: member?.family_id,
-            date
-        });
-
-        // If it's a transfer and we have an account selected, we might want a counter-transaction
-        // Special case: Quota 600€ - It's a transfer from Personal to Shared
-        if (description === 'Quota Mensile Fideuram' && type === 'income') {
-            const personalAccount = accounts.find(a => a.owner_id === payerId);
-            const giroCategoryExpense = categories.find(c => c.name.toLowerCase().includes('giroconto') && c.type === 'expense');
-
-            if (personalAccount && giroCategoryExpense) {
-                transactionsToInsert.push({
-                    amount: parseFloat(amount),
-                    description: `Uscita Quota: ${description}`,
-                    type: 'expense',
-                    category_id: giroCategoryExpense.id,
-                    payer_id: payerId,
-                    beneficiary_id: null,
-                    account_id: personalAccount.id,
-                    family_id: member?.family_id,
-                    date
-                });
-            }
-        }
-
-        const { error } = await supabase.from("transactions").insert(transactionsToInsert);
-
-        if (error) {
-            alert("Errore: " + error.message);
-        } else {
-            // If recurring... (only for the first one usually)
-            if (isRecurring) {
-                await supabase.from("fixed_items").insert({
+        if (isEditMode && transactionToEdit) {
+            // UPDATE existing transaction
+            const { error } = await supabase
+                .from("transactions")
+                .update({
                     amount: parseFloat(amount),
                     description,
                     type,
@@ -158,14 +138,78 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
                     payer_id: payerId,
                     beneficiary_id: beneficiaryId || null,
                     account_id: accountId || null,
-                    family_id: member?.family_id,
-                    frequency: 'monthly',
-                    active: true,
-                    next_generation_date: date // Use the selected date as the first anchor
-                });
+                    date
+                })
+                .eq("id", transactionToEdit.id);
+
+            if (error) {
+                alert("Errore: " + error.message);
+            } else {
+                onSuccess();
+                onClose();
             }
-            onSuccess();
-            onClose();
+        } else {
+            // INSERT new transaction(s)
+            const transactionsToInsert = [];
+
+            // Primary Transaction
+            transactionsToInsert.push({
+                amount: parseFloat(amount),
+                description,
+                type,
+                category_id: categoryId || null,
+                payer_id: payerId,
+                beneficiary_id: beneficiaryId || null,
+                account_id: accountId || null,
+                family_id: member?.family_id,
+                date
+            });
+
+            // If it's a transfer and we have an account selected, we might want a counter-transaction
+            // Special case: Quota 600€ - It's a transfer from Personal to Shared
+            if (description === 'Quota Mensile Fideuram' && type === 'income') {
+                const personalAccount = accounts.find(a => a.owner_id === payerId);
+                const giroCategoryExpense = categories.find(c => c.name.toLowerCase().includes('giroconto') && c.type === 'expense');
+
+                if (personalAccount && giroCategoryExpense) {
+                    transactionsToInsert.push({
+                        amount: parseFloat(amount),
+                        description: `Uscita Quota: ${description}`,
+                        type: 'expense',
+                        category_id: giroCategoryExpense.id,
+                        payer_id: payerId,
+                        beneficiary_id: null,
+                        account_id: personalAccount.id,
+                        family_id: member?.family_id,
+                        date
+                    });
+                }
+            }
+
+            const { error } = await supabase.from("transactions").insert(transactionsToInsert);
+
+            if (error) {
+                alert("Errore: " + error.message);
+            } else {
+                // If recurring... (only for the first one usually)
+                if (isRecurring) {
+                    await supabase.from("fixed_items").insert({
+                        amount: parseFloat(amount),
+                        description,
+                        type,
+                        category_id: categoryId || null,
+                        payer_id: payerId,
+                        beneficiary_id: beneficiaryId || null,
+                        account_id: accountId || null,
+                        family_id: member?.family_id,
+                        frequency: 'monthly',
+                        active: true,
+                        next_generation_date: date // Use the selected date as the first anchor
+                    });
+                }
+                onSuccess();
+                onClose();
+            }
         }
         setLoading(false);
     };
@@ -240,8 +284,8 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
 
                 <div className="flex justify-between items-center mb-8 relative">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Nuova Operazione</h2>
-                        <p className="text-slate-400 text-sm font-medium">Aggiungi un'entrata o un'uscita al budget.</p>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{isEditMode ? "Modifica Operazione" : "Nuova Operazione"}</h2>
+                        <p className="text-slate-400 text-sm font-medium">{isEditMode ? "Modifica i dettagli dell'operazione." : "Aggiungi un'entrata o un'uscita al budget."}</p>
                     </div>
                     <button
                         onClick={onClose}
@@ -429,8 +473,8 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
                             </div>
                         </div>
 
-                        {/* Recurring Checkbox */}
-                        {type === 'expense' && (
+                        {/* Recurring Checkbox - disabled in edit mode */}
+                        {type === 'expense' && !isEditMode && (
                             <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all" onClick={() => setIsRecurring(!isRecurring)}>
                                 <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${isRecurring ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200'}`}>
                                     {isRecurring && <Plus size={14} className="text-white" />}
@@ -459,7 +503,7 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
                                 : 'bg-emerald-600 shadow-emerald-100 hover:bg-emerald-700'
                                 }`}
                         >
-                            {loading ? "Salvataggio..." : "Salva Operazione"}
+                            {loading ? "Salvataggio..." : (isEditMode ? "Aggiorna Operazione" : "Salva Operazione")}
                         </button>
                     </div>
                 </form>
