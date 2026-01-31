@@ -51,7 +51,7 @@ export default function TransactionsPage() {
 
         let query = supabase
             .from("transactions")
-            .select("id, amount, description, type, date, category_id, payer_id, beneficiary_id, account_id, categories(name), payer:family_members!payer_id(name), beneficiary:family_members!beneficiary_id(name)")
+            .select("id, amount, description, type, date, category_id, payer_id, beneficiary_id, account_id, categories(name), payer:family_members!payer_id(name), beneficiary:family_members!beneficiary_id(name), accounts(name)")
             .eq("family_id", member.family_id)
             .order("date", { ascending: false });
 
@@ -208,6 +208,7 @@ export default function TransactionsPage() {
                             <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                 <th className="px-8 py-6">Data</th>
                                 <th className="px-8 py-6">Operazione</th>
+                                <th className="px-8 py-6">Conto</th>
                                 <th className="px-8 py-6">Pagato da</th>
                                 <th className="px-8 py-6">Beneficiario</th>
                                 <th className="px-8 py-6">Categoria</th>
@@ -238,6 +239,11 @@ export default function TransactionsPage() {
                                                 </div>
                                                 <span className="text-sm font-black text-slate-800">{tx.description || tx.categories?.name}</span>
                                             </div>
+                                        </td>
+                                        <td className="px-8 py-6">
+                                            <span className="bg-amber-50 text-amber-700 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase">
+                                                {tx.accounts?.name || "N/A"}
+                                            </span>
                                         </td>
                                         <td className="px-8 py-6">
                                             <span className="bg-slate-100 text-slate-600 text-[10px] font-black px-3 py-1.5 rounded-lg uppercase">
