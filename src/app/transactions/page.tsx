@@ -51,7 +51,7 @@ export default function TransactionsPage() {
 
         let query = supabase
             .from("transactions")
-            .select("*, categories(name), payer:family_members!payer_id(name), beneficiary:family_members!beneficiary_id(name)")
+            .select("id, amount, description, type, date, category_id, payer_id, beneficiary_id, account_id, categories(name), payer:family_members!payer_id(name), beneficiary:family_members!beneficiary_id(name)")
             .eq("family_id", member.family_id)
             .order("date", { ascending: false });
 
