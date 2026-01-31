@@ -77,8 +77,9 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
         }
     }, [transactionToEdit]);
 
-    // 1. Sync Payer based on Account (Primary Logic)
+    // 1. Sync Payer based on Account (Primary Logic) - DISABLED in edit mode
     useEffect(() => {
+        if (isEditMode) return; // Skip auto-sync in edit mode
         if (accountId && accounts.length > 0) {
             const account = accounts.find(a => a.id === accountId);
             if (account) {
@@ -96,27 +97,29 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
                 }
             }
         }
-    }, [accountId, accounts, members, member?.id]);
+    }, [accountId, accounts, members, member?.id, isEditMode]);
 
-    // 2. Automate beneficiary for Joint account income
+    // 2. Automate beneficiary for Joint account income - DISABLED in edit mode
     useEffect(() => {
+        if (isEditMode) return; // Skip auto-sync in edit mode
         if (type === 'income' && accountId) {
             const account = accounts.find(a => a.id === accountId);
             if (account && account.owner_id === null) {
                 setBeneficiaryId(""); // Family / Comune
             }
         }
-    }, [accountId, type, accounts]);
+    }, [accountId, type, accounts, isEditMode]);
 
-    // 3. Automate beneficiary for Salary category
+    // 3. Automate beneficiary for Salary category - DISABLED in edit mode
     useEffect(() => {
+        if (isEditMode) return; // Skip auto-sync in edit mode
         if (type === 'income' && categoryId) {
             const cat = categories.find(c => c.id === categoryId);
             if (cat && (cat.name.toLowerCase().includes('stipendio') || cat.name.toLowerCase().includes('salario'))) {
                 setBeneficiaryId(payerId);
             }
         }
-    }, [categoryId, type, payerId, categories]);
+    }, [categoryId, type, payerId, categories, isEditMode]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
