@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { FamilyMember, Category, TransactionType, Account } from "@/lib/types";
+import { FamilyMember, Category, TransactionType, Account, Transaction } from "@/lib/types";
 import { X, Euro, Calendar as CalendarIcon, FileText, User, Tag, TrendingUp, TrendingDown, Plus, Sparkles, Search } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
