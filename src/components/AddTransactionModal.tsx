@@ -47,15 +47,19 @@ export function AddTransactionModal({ onClose, onSuccess, initialIsRecurring = f
             if (c) setCategories(c);
             if (a) {
                 setAccounts(a);
-                if (a.length > 0) setAccountId(a[0].id);
+                // Only set default account if NOT in edit mode
+                if (a.length > 0 && !isEditMode) setAccountId(a[0].id);
             }
             if (txs) setAllTransactions(txs);
 
-            if (member.id) {
-                setPayerId(member.id);
-            } else if (m?.length) {
-                const firstParent = m.find(member => member.role === 'parent');
-                setPayerId(firstParent ? firstParent.id : m[0].id);
+            // Only set default payer if NOT in edit mode
+            if (!isEditMode) {
+                if (member.id) {
+                    setPayerId(member.id);
+                } else if (m?.length) {
+                    const firstParent = m.find(member => member.role === 'parent');
+                    setPayerId(firstParent ? firstParent.id : m[0].id);
+                }
             }
         }
         fetchData();
