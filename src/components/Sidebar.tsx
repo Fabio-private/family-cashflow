@@ -11,12 +11,14 @@ import {
     MessageSquare,
     Settings,
     LogOut,
-    Sparkles
+    Sparkles,
+    CheckCircle2
 } from "lucide-react";
 
 const menuItems = [
     { icon: LayoutDashboard, href: "/", label: "Dashboard" },
     { icon: Wallet, href: "/transactions", label: "Wallet" },
+    { icon: CheckCircle2, href: "/reconciliation", label: "Riconciliazione" },
     { icon: PieChart, href: "/analytics", label: "Analysis" },
     { icon: Calendar, href: "/calendar", label: "Events" },
     { icon: Share2, href: "/share", label: "Social" },

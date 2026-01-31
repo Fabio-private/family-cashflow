@@ -69,3 +69,51 @@ export interface MonthlySummary {
     type: TransactionType;
     total_amount: number;
 }
+
+// Bank Reconciliation Types
+export interface BankTransaction {
+    id: string; // temporary ID
+    date: string;
+    description: string;
+    amount: number;
+    balance?: number;
+    raw: any; // original data from CSV
+}
+
+export type ReconciliationStatus = 'matched' | 'unmatched_bank' | 'unmatched_app' | 'discrepancy';
+
+export interface ReconciliationMatch {
+    bankTransaction: BankTransaction;
+    appTransaction?: Transaction;
+    matchScore: number; // 0-100
+    status: ReconciliationStatus;
+    issues?: string[]; // e.g., ["Amount differs by €0.50", "Date differs by 1 day"]
+}
+
+export interface ReconciliationResult {
+    matched: ReconciliationMatch[];
+    unmatchedBank: BankTransaction[];
+    unmatchedApp: Transaction[];
+    summary: {
+        totalBank: number;
+        totalApp: number;
+        matched: number;
+        unmatchedBank: number;
+        unmatchedApp: number;
+        balanceDifference: number;
+    };
+}
+
+export interface ColumnMapping {
+    dateColumn: number; // column index
+    descriptionColumn: number;
+    amountColumn: number;
+    balanceColumn?: number;
+}
+
+export interface MatchingOptions {
+    dateTolerance: number; // days
+    amountTolerance: number; // euros
+    useFuzzyMatching: boolean;
+}
+
