@@ -425,17 +425,14 @@ export default function Dashboard() {
                 !isFromJointAccount;
         });
 
-        // 2. NUOVO: Entrate/contributi verso conti cointestati (es. Fideuram Extra)
-        // Queste rappresentano trasferimenti dal patrimonio personale al conto condiviso
+        // 2. Contributi verso conti cointestati (inclusi i giroconti entrata)
         const currentMonthContributions = familyTransactions.filter(t => {
             const tDate = new Date(t.date);
             const isToJointAccount = t.accounts && t.accounts.owner_id === null;
-            const isGiroconto = t.categories?.name?.toLowerCase().includes('giroconto');
             return t.type === 'income' &&
                 tDate.getMonth() === now.getMonth() &&
                 tDate.getFullYear() === now.getFullYear() &&
-                isToJointAccount &&
-                !isGiroconto; // Escludi giroconti già gestiti separatamente
+                isToJointAccount;
         });
 
         const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
@@ -450,11 +447,10 @@ export default function Dashboard() {
         const fabioContributions = currentMonthContributions.filter(t => t.payer_id === fabio.id).reduce((acc, t) => acc + Number(t.amount), 0);
         const giuliaContributions = currentMonthContributions.filter(t => t.payer_id === giulia.id).reduce((acc, t) => acc + Number(t.amount), 0);
 
-        // Il credito include: spese comuni divise per 2 + spese per l'altro + contributi divisi per 2
-        // (ogni contributo al conto condiviso beneficia entrambi al 50%)
-        const fabioCredit = (fabioPaidCommon / 2) + fabioPaidForGiulia + (fabioContributions / 2);
-        const giuliaCredit = (giuliaPaidCommon / 2) + giuliaPaidForFabio + (giuliaContributions / 2);
-        const netBalance = fabioCredit - giuliaCredit;
+        // Totale speso per la famiglia da ciascuno: contributi + spese personali non-self
+        const fabioTotal = fabioContributions + fabioPaidCommon + fabioPaidForGiulia;
+        const giuliaTotal = giuliaContributions + giuliaPaidCommon + giuliaPaidForFabio;
+        const netBalance = (fabioTotal - giuliaTotal) / 2;
 
         return {
             fabio,
