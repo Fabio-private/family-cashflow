@@ -426,13 +426,17 @@ export default function Dashboard() {
         });
 
         // 2. Contributi verso conti cointestati (inclusi i giroconti entrata)
+        // Escludi regalo/bonus: sono soldi da fonti esterne, non contributi personali
         const currentMonthContributions = familyTransactions.filter(t => {
             const tDate = new Date(t.date);
             const isToJointAccount = t.accounts && t.accounts.owner_id === null;
+            const catName = (t.categories?.name || '').toLowerCase();
+            const isRegaloOrBonus = catName.includes('regalo') || catName.includes('bonus');
             return t.type === 'income' &&
                 tDate.getMonth() === now.getMonth() &&
                 tDate.getFullYear() === now.getFullYear() &&
-                isToJointAccount;
+                isToJointAccount &&
+                !isRegaloOrBonus;
         });
 
         const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
