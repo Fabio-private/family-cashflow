@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { Transaction, MonthlySummary, Category } from "@/lib/types";
-import { format, startOfYear, endOfYear, eachMonthOfInterval } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths } from "date-fns";
 import { it } from "date-fns/locale";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/context/AuthContext";
@@ -28,7 +28,10 @@ import {
     Calendar,
     Target,
     ArrowUpRight,
-    ArrowDownRight
+    ArrowDownRight,
+    ChevronLeft,
+    ChevronRight,
+    Activity
 } from "lucide-react";
 
 // Using dynamic to prevent SSR issues with Recharts
@@ -40,15 +43,15 @@ export default function AnalyticsPage() {
     const [summary, setSummary] = useState<MonthlySummary[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+    const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
 
 
 
     const fetchData = useCallback(async () => {
         if (!member?.family_id) return;
         setIsLoading(true);
-        const start = format(startOfYear(new Date(parseInt(selectedYear), 0, 1)), "yyyy-MM-dd");
-        const end = format(endOfYear(new Date(parseInt(selectedYear), 11, 31)), "yyyy-MM-dd");
+        const start = format(startOfMonth(selectedMonth), "yyyy-MM-dd");
+        const end = format(endOfMonth(selectedMonth), "yyyy-MM-dd");
 
         // Fetch with same inclusivity as Dashboard
         let txQuery = supabase
@@ -68,7 +71,7 @@ export default function AnalyticsPage() {
             .from("monthly_summary")
             .select("*")
             .eq("family_id", member.family_id)
-            .like("month", `${selectedYear}-%`);
+            .eq("month", format(selectedMonth, "yyyy-MM"));
 
         const { data: cats } = await supabase
             .from("categories")
@@ -79,7 +82,7 @@ export default function AnalyticsPage() {
         if (sumData) setSummary(sumData as any);
         if (cats) setCategories(cats);
         setIsLoading(false);
-    }, [selectedYear, member?.family_id]);
+    }, [selectedMonth, member?.family_id]);
 
     useEffect(() => {
         fetchData();
@@ -106,29 +109,29 @@ export default function AnalyticsPage() {
         });
     }, [transactions]);
 
-    // 1. Data per Mese (Bar Chart) - Calculated from familyTransactions
-    const monthlyData = useMemo(() => {
-        const months = eachMonthOfInterval({
-            start: new Date(parseInt(selectedYear), 0, 1),
-            end: new Date(parseInt(selectedYear), 11, 31)
+    // 1. Data per Giorno (Bar Chart) - Calculated from familyTransactions
+    const dailyData = useMemo(() => {
+        const days = eachDayOfInterval({
+            start: startOfMonth(selectedMonth),
+            end: endOfMonth(selectedMonth)
         });
 
-        return months.map(m => {
-            const mKey = format(m, "yyyy-MM");
-            const mLabel = format(m, "MMM", { locale: it });
+        return days.map(d => {
+            const dKey = format(d, "yyyy-MM-dd");
+            const dLabel = format(d, "dd MMM", { locale: it });
 
-            const monthTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM") === mKey);
-            const income = monthTxs.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
-            const expense = monthTxs.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
+            const dayTxs = familyTransactions.filter(t => format(new Date(t.date), "yyyy-MM-dd") === dKey);
+            const income = dayTxs.filter(t => t.type === 'income').reduce((acc, curr) => acc + Number(curr.amount), 0);
+            const expense = dayTxs.filter(t => t.type === 'expense').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
             return {
-                name: mLabel,
+                name: dLabel,
                 income,
                 expense,
                 balance: income - expense
             };
         });
-    }, [familyTransactions, selectedYear]);
+    }, [familyTransactions, selectedMonth]);
 
     // 2. Data per Categoria (Pie Chart) - Solo Spese
     const categoryData = useMemo(() => {
@@ -146,7 +149,11 @@ export default function AnalyticsPage() {
 
     const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4'];
 
-    const totalYearlyExpense = categoryData.reduce((acc, curr) => acc + curr.value, 0);
+    const totalMonthlyExpense = categoryData.reduce((acc, curr) => acc + curr.value, 0);
+
+    const currentMonthLabel = useMemo(() => {
+        return format(selectedMonth, "MMMM yyyy", { locale: it });
+    }, [selectedMonth]);
 
     return (
         <div className="space-y-10 animate-up">
@@ -155,20 +162,23 @@ export default function AnalyticsPage() {
                     <h1 className="text-4xl font-black text-slate-900 tracking-tight">Financial Intelligence</h1>
                     <p className="text-slate-500 font-medium mt-1">Esplora i big data del tuo budget familiare.</p>
                 </div>
-                <div className="flex gap-2 bg-white p-1 rounded-2xl shadow-sm border border-slate-100">
-                    {[
-                        (new Date().getFullYear() - 1).toString(),
-                        new Date().getFullYear().toString(),
-                        (new Date().getFullYear() + 1).toString()
-                    ].map(year => (
-                        <button
-                            key={year}
-                            onClick={() => setSelectedYear(year)}
-                            className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${selectedYear === year ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
-                        >
-                            {year}
-                        </button>
-                    ))}
+                <div className="flex bg-white items-center gap-2 p-2 rounded-2xl shadow-sm border border-slate-100">
+                    <button
+                        onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}
+                        className="p-1.5 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                    >
+                        <ChevronLeft size={20} />
+                    </button>
+                    <p className="text-slate-600 text-xs font-black flex items-center gap-2 uppercase tracking-widest min-w-[140px] justify-center">
+                        <Activity size={14} className="text-indigo-500" />
+                        {currentMonthLabel}
+                    </p>
+                    <button
+                        onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}
+                        className="p-1.5 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
                 </div>
             </div>
 
@@ -186,7 +196,7 @@ export default function AnalyticsPage() {
                     </div>
                     <div className="h-[400px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={monthlyData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                            <BarChart data={dailyData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} />
                                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
@@ -206,10 +216,10 @@ export default function AnalyticsPage() {
                 <div className="space-y-8">
                     <div className="soft-card bg-indigo-600 text-white border-transparent">
                         <div className="flex items-center justify-between mb-6">
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Focus Risparmio Annuo</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Focus Risparmio Mensile</p>
                             <Target size={20} className="opacity-70" />
                         </div>
-                        <h2 className="text-4xl font-black tracking-tighter mb-2">€ {monthlyData.reduce((acc, curr) => acc + curr.balance, 0).toLocaleString('it-IT')}</h2>
+                        <h2 className="text-4xl font-black tracking-tighter mb-2">€ {dailyData.reduce((acc, curr) => acc + curr.balance, 0).toLocaleString('it-IT')}</h2>
                         <div className="flex items-center gap-2 text-sm font-bold bg-white/10 w-fit px-3 py-1 rounded-full">
                             <ArrowUpRight size={14} />
                             +18% focus target
@@ -232,7 +242,7 @@ export default function AnalyticsPage() {
                                         <div
                                             className="h-full rounded-full transition-all duration-1000"
                                             style={{
-                                                width: `${(cat.value / totalYearlyExpense) * 100}%`,
+                                                width: `${(cat.value / totalMonthlyExpense) * 100}%`,
                                                 backgroundColor: COLORS[idx % COLORS.length]
                                             }}
                                         />
