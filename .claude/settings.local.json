@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c//**)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: correct rebalancing calculation to include joint account contributions\n\nTwo bugs in rebalanceData memo:\n1. currentMonthContributions excluded giroconto entries, zeroing out\n   both partners'' contributions to the joint account\n2. Formula gave full weight to cross-person expenses instead of\n   halving them like all other costs\n\nNew logic: netBalance = \\(fabioTotal - giuliaTotal\\) / 2\nwhere total = contributions + personal non-self expenses\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}

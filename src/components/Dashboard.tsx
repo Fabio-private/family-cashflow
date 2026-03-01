@@ -5,10 +5,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { Transaction, MonthlySummary } from "../lib/types";
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subMonths } from "date-fns";
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subMonths, addMonths } from "date-fns";
 import { it } from "date-fns/locale";
 import { useAuth } from "@/context/AuthContext";
 import {
+    ChevronLeft,
+    ChevronRight,
     TrendingUp,
     TrendingDown,
     Wallet,
@@ -35,6 +37,7 @@ const CategoryPieChart = dynamic(() => import("./CategoryPieChart"), { ssr: fals
 
 export default function Dashboard() {
     const { member } = useAuth();
+    const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [members, setMembers] = useState<any[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
@@ -79,9 +82,8 @@ export default function Dashboard() {
         if (!member?.family_id) return;
 
         setIsLoading(true);
-        const now = new Date();
-        const currentMonth = format(now, "yyyy-MM");
-        const prevMonth = format(subMonths(now, 1), "yyyy-MM");
+        const currentMonth = format(selectedMonth, "yyyy-MM");
+        const prevMonth = format(subMonths(selectedMonth, 1), "yyyy-MM");
 
         // Fetch all transactions for this family OR those without a family_id (legacy)
         let txQuery = supabase
@@ -131,7 +133,7 @@ export default function Dashboard() {
         if (catData) setCategories(catData);
         if (acctData) setAccounts(acctData);
         setIsLoading(false);
-    }, [member?.family_id]);
+    }, [member?.family_id, selectedMonth]);
 
     const processFixedItems = useCallback(async (currentTxs: Transaction[], allCategories: any[]) => {
         if (!member?.family_id) return;
@@ -204,9 +206,8 @@ export default function Dashboard() {
     }, [isLoading, transactions.length, categories.length, processFixedItems]);
 
     const stats = useMemo(() => {
-        const now = new Date();
-        const currentMonthStr = format(now, "yyyy-MM");
-        const prevMonthStr = format(subMonths(now, 1), "yyyy-MM");
+        const currentMonthStr = format(selectedMonth, "yyyy-MM");
+        const prevMonthStr = format(subMonths(selectedMonth, 1), "yyyy-MM");
 
         // Get children IDs (Federico, Ludovica, Dante)
         const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
@@ -258,14 +259,13 @@ export default function Dashboard() {
             expenseTrend: calculateTrend(expense, prevExpense),
             balanceTrend: calculateTrend(income - expense, prevIncome - prevExpense)
         };
-    }, [transactions, members]);
+    }, [transactions, members, selectedMonth]);
 
     // Spese Totali Effettive: TUTTE le spese per la famiglia da TUTTI i conti
     // Include spese da conto cointestato E da conti personali per famiglia/figli
     const effectiveTotalExpenses = useMemo(() => {
-        const now = new Date();
-        const currentMonthStr = format(now, "yyyy-MM");
-        const prevMonthStr = format(subMonths(now, 1), "yyyy-MM");
+        const currentMonthStr = format(selectedMonth, "yyyy-MM");
+        const prevMonthStr = format(subMonths(selectedMonth, 1), "yyyy-MM");
 
         // Get children IDs
         const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
@@ -293,13 +293,12 @@ export default function Dashboard() {
         const trend = prevMonthTotal === 0 ? 0 : ((currentMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
 
         return { total: currentMonthTotal, trend };
-    }, [transactions, members]);
+    }, [transactions, members, selectedMonth]);
 
     const familyMemberSummary = useMemo(() => {
-        const now = new Date();
         const currentMonthTxs = familyTransactions.filter(t => {
             const d = new Date(t.date);
-            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
         });
 
         return members.map(m => {
@@ -313,7 +312,7 @@ export default function Dashboard() {
                 total_amount: total
             };
         }).sort((a, b) => b.total_amount - a.total_amount);
-    }, [familyTransactions, members]);
+    }, [familyTransactions, members, selectedMonth]);
     const buoniPastoBalance = useMemo(() => {
         const bpAccountNames = ["Buoni Pasto Fabio", "Buoni pasto Fabio"];
         const bpIncome = familyTransactions
@@ -327,9 +326,8 @@ export default function Dashboard() {
     }, [familyTransactions]);
 
     const dynamicBudget = useMemo(() => {
-        const now = new Date();
         const currentMonthTransactions = familyTransactions.filter(t =>
-            format(new Date(t.date), "yyyy-MM") === format(now, "yyyy-MM")
+            format(new Date(t.date), "yyyy-MM") === format(selectedMonth, "yyyy-MM")
         );
 
         const incomeSources = [
@@ -350,13 +348,12 @@ export default function Dashboard() {
             .reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         return incomeFromSources + incomeFromBonus;
-    }, [familyTransactions]);
+    }, [familyTransactions, selectedMonth]);
 
     const categoryData = useMemo(() => {
-        const now = new Date();
         const currentMonthExpenses = familyTransactions.filter(t => {
             const d = new Date(t.date);
-            return t.type === 'expense' && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            return t.type === 'expense' && d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
         });
 
         const totals: Record<string, number> = {};
@@ -370,11 +367,11 @@ export default function Dashboard() {
             value,
             color: '' // CategoryPieChart handles default colors
         })).sort((a, b) => b.value - a.value);
-    }, [familyTransactions]);
+    }, [familyTransactions, selectedMonth]);
 
     const currentMonthLabel = useMemo(() => {
-        return format(new Date(), "MMMM yyyy", { locale: it });
-    }, []);
+        return format(selectedMonth, "MMMM yyyy", { locale: it });
+    }, [selectedMonth]);
 
     const filteredTransactions = useMemo(() => {
         if (!searchTerm) return familyTransactions.slice(0, 10);
@@ -413,15 +410,13 @@ export default function Dashboard() {
 
         if (!fabio || !giulia || familyTransactions.length === 0) return null;
 
-        const now = new Date();
-
         // 1. Spese da conti PERSONALI per la famiglia (logica esistente)
         const currentMonthExpenses = familyTransactions.filter(t => {
             const tDate = new Date(t.date);
             const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
             return t.type === 'expense' &&
-                tDate.getMonth() === now.getMonth() &&
-                tDate.getFullYear() === now.getFullYear() &&
+                tDate.getMonth() === selectedMonth.getMonth() &&
+                tDate.getFullYear() === selectedMonth.getFullYear() &&
                 !isFromJointAccount;
         });
 
@@ -433,8 +428,8 @@ export default function Dashboard() {
             const catName = (t.categories?.name || '').toLowerCase();
             const isRegaloOrBonus = catName.includes('regalo') || catName.includes('bonus');
             return t.type === 'income' &&
-                tDate.getMonth() === now.getMonth() &&
-                tDate.getFullYear() === now.getFullYear() &&
+                tDate.getMonth() === selectedMonth.getMonth() &&
+                tDate.getFullYear() === selectedMonth.getFullYear() &&
                 isToJointAccount &&
                 !isRegaloOrBonus;
         });
@@ -462,13 +457,12 @@ export default function Dashboard() {
             netBalance,
             totalActivity: fabioPaidCommon + giuliaPaidCommon + fabioPaidForGiulia + giuliaPaidForFabio + fabioContributions + giuliaContributions
         };
-    }, [familyTransactions, members]);
+    }, [familyTransactions, members, selectedMonth]);
 
     const contributionStatus = useMemo(() => {
-        const now = new Date();
         const currentMonthTxs = transactions.filter(t => {
             const d = new Date(t.date);
-            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
         });
 
         const fideuramNames = ["Fideuram Cointestato", "Fideuram condiviso"];
@@ -490,7 +484,7 @@ export default function Dashboard() {
         );
 
         return { fabio: fabioPushed, giulia: giuliaPushed };
-    }, [transactions, members]);
+    }, [transactions, members, selectedMonth]);
 
     const handleSettlement = async () => {
         if (!rebalanceData || rebalanceData.netBalance === 0) return;
@@ -587,10 +581,24 @@ export default function Dashboard() {
                     <div className="absolute -right-4 -top-4 w-24 h-24 bg-indigo-50 rounded-full blur-3xl opacity-50 group-hover:scale-150 transition-transform duration-700"></div>
                     <div>
                         <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none relative z-10">Famiglia Cashflow</h1>
-                        <p className="text-slate-400 text-[10px] font-black mt-3 flex items-center gap-1.5 uppercase tracking-widest relative z-10">
-                            <Activity size={12} className="text-indigo-500" />
-                            {currentMonthLabel}
-                        </p>
+                        <div className="flex items-center gap-3 mt-3 relative z-10">
+                            <button
+                                onClick={() => setSelectedMonth(prev => subMonths(prev, 1))}
+                                className="p-1 rounded-md hover:bg-slate-100 text-slate-400 transition-colors"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            <p className="text-slate-400 text-[10px] font-black flex items-center gap-1.5 uppercase tracking-widest min-w-[120px] justify-center">
+                                <Activity size={12} className="text-indigo-500" />
+                                {currentMonthLabel}
+                            </p>
+                            <button
+                                onClick={() => setSelectedMonth(prev => addMonths(prev, 1))}
+                                className="p-1 rounded-md hover:bg-slate-100 text-slate-400 transition-colors"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
+                        </div>
                     </div>
                     <button
                         onClick={() => setIsModalOpen(true)}
