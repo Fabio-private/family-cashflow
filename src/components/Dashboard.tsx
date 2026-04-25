@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import { Transaction, MonthlySummary } from "../lib/types";
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subMonths, addMonths } from "date-fns";
+import { isJointContribution } from "../lib/incomeClassification";
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subMonths, addMonths, endOfMonth } from "date-fns";
 import { it } from "date-fns/locale";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -48,33 +49,51 @@ export default function Dashboard() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [isSubmittingQuota, setIsSubmittingQuota] = useState(false);
 
     // --- FAMILY BUDGET LOGIC ---
-    // Le spese familiari includono SOLO:
-    // 1. Entrate/Uscite da conto cointestato o Buoni Pasto
-    // 2. Spese con beneficiario "Famiglia" (beneficiary_id = null)
-    // NON includono spese da conto personale per altri membri (es. Federico, Ludovica, Dante)
-    // perché quelle sono spese personali di chi ha pagato
-    const familyTransactions = useMemo(() => {
+    // Spese di gruppo: gravano sul budget famiglia. Escludono prestiti adulto↔adulto e pareggi.
+    const groupExpenses = useMemo(() => {
+        const childOrPetIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
         return transactions.filter(t => {
+            if (t.type !== 'expense') return false;
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+            if (t.description?.toLowerCase().startsWith('pareggio spese')) return false;
+
             const isJointAccount = t.accounts && t.accounts.owner_id === null;
             const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
-
-            if (t.type === 'income') {
-                return isJointAccount || isMealVoucher;
-            }
-
-            // Exclude transfers (giroconto)
-            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
-
-            // Include if from Joint/Meal Voucher account (regardless of beneficiary)
             if (isJointAccount || isMealVoucher) return true;
 
-            // Include ONLY if beneficiary is "Famiglia" (null) from personal account
-            // OR if paying for another member (e.g. child, partner)
-            if (t.beneficiary_id === null || t.beneficiary_id !== t.payer_id) return true;
-
+            if (t.beneficiary_id === null) return true;
+            if (childOrPetIds.includes(t.beneficiary_id)) return true;
             return false;
+        });
+    }, [transactions, members]);
+
+    // Prestiti incrociati tra adulti (es. Fabio paga per Giulia da conto suo) + righe di pareggio:
+    // entrano nel rebalancing per spostare denaro tra adulti, ma sono escluse da groupExpenses
+    // (pie chart, totali famiglia) perché non sono spese di gruppo.
+    const crossLoans = useMemo(() => {
+        const adultIds = members.filter(m => m.role === 'parent').map(m => m.id);
+        return transactions.filter(t => {
+            if (t.type !== 'expense') return false;
+            if (t.categories?.name?.toLowerCase().includes('giroconto')) return false;
+            if (!t.beneficiary_id || t.payer_id === t.beneficiary_id) return false;
+            if (!adultIds.includes(t.payer_id) || !adultIds.includes(t.beneficiary_id)) return false;
+            const isJointAccount = t.accounts && t.accounts.owner_id === null;
+            const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
+            if (isJointAccount || isMealVoucher) return false;
+            return true;
+        });
+    }, [transactions, members]);
+
+    // Entrate su conti joint o buoni pasto (per dynamicBudget e rebalanceData.contributions).
+    const jointIncome = useMemo(() => {
+        return transactions.filter(t => {
+            if (t.type !== 'income') return false;
+            const isJointAccount = t.accounts && t.accounts.owner_id === null;
+            const isMealVoucher = t.accounts?.name?.toLowerCase().includes('buoni pasto');
+            return isJointAccount || isMealVoucher;
         });
     }, [transactions]);
 
@@ -85,15 +104,11 @@ export default function Dashboard() {
         const currentMonth = format(selectedMonth, "yyyy-MM");
         const prevMonth = format(subMonths(selectedMonth, 1), "yyyy-MM");
 
-        // Fetch all transactions for this family OR those without a family_id (legacy)
-        let txQuery = supabase
+        const txQuery = supabase
             .from("transactions")
             .select("*, categories(name, id), payer:family_members!payer_id(name, id), beneficiary:family_members!beneficiary_id(name, id), accounts(id, name, owner_id)")
+            .eq("family_id", member.family_id)
             .order("date", { ascending: false });
-
-        if (member.family_id) {
-            txQuery = txQuery.or(`family_id.eq.${member.family_id},family_id.is.null`);
-        }
 
         const { data: txData, error: txError } = await txQuery;
         if (txError) console.error("Error fetching transactions:", txError);
@@ -220,30 +235,27 @@ export default function Dashboard() {
             return t.beneficiary_id === null || childrenIds.includes(t.beneficiary_id);
         };
 
-        // Helper: check if from Fideuram joint account
-        const isFromFideuram = (t: Transaction) => {
-            const acctName = t.accounts?.name?.toLowerCase() || '';
-            return acctName.includes('fideuram') || acctName.includes('condiviso');
-        };
+        // BUG-9: cointestato = SOLO owner_id === null
+        const isFromJoint = (t: Transaction) => t.accounts?.owner_id === null;
 
         const currentTxs = transactions.filter(t => format(new Date(t.date), "yyyy-MM") === currentMonthStr);
         const prevTxs = transactions.filter(t => format(new Date(t.date), "yyyy-MM") === prevMonthStr);
 
         // Budget Disponibile = Incomes to Joint accounts (EXCLUDING Meal Vouchers)
         const income = currentTxs
-            .filter(t => t.type === 'income' && isFromFideuram(t) && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
+            .filter(t => t.type === 'income' && isFromJoint(t) && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
-        // Spese Totali (Famiglia) = Only from Fideuram, for Famiglia or children
+        // Spese Totali (Famiglia) = Only from joint account, for Famiglia or children
         const expense = currentTxs
-            .filter(t => isFamilyOrChildExpense(t) && isFromFideuram(t))
+            .filter(t => isFamilyOrChildExpense(t) && isFromJoint(t))
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
         const prevIncome = prevTxs
-            .filter(t => t.type === 'income' && isFromFideuram(t) && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
+            .filter(t => t.type === 'income' && isFromJoint(t) && !t.accounts?.name?.toLowerCase().includes('buoni pasto'))
             .reduce((sum, t) => sum + Number(t.amount), 0);
         const prevExpense = prevTxs
-            .filter(t => isFamilyOrChildExpense(t) && isFromFideuram(t))
+            .filter(t => isFamilyOrChildExpense(t) && isFromJoint(t))
             .reduce((sum, t) => sum + Number(t.amount), 0);
 
         const calculateTrend = (curr: number, prev: number) => {
@@ -253,7 +265,7 @@ export default function Dashboard() {
 
         return {
             income, // This is "Budget Disponibile"
-            expense, // This is "Spese Totali (Famiglia)" - only Fideuram
+            expense, // This is "Spese Totali (Famiglia)" - only joint account
             balance: income - expense, // This is "Bilancio Netto"
             incomeTrend: calculateTrend(income, prevIncome),
             expenseTrend: calculateTrend(expense, prevExpense),
@@ -296,15 +308,13 @@ export default function Dashboard() {
     }, [transactions, members, selectedMonth]);
 
     const familyMemberSummary = useMemo(() => {
-        const currentMonthTxs = familyTransactions.filter(t => {
-            const d = new Date(t.date);
-            return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
-        });
+        const monthStr = format(selectedMonth, "yyyy-MM");
+        const allExpenses = [...groupExpenses, ...crossLoans];
+        const currentMonthTxs = allExpenses.filter(t => format(new Date(t.date), "yyyy-MM") === monthStr);
 
         return members.map(m => {
-            const memberTx = currentMonthTxs.filter(t => t.payer_id === m.id);
-            const total = memberTx
-                .filter(t => t.type === 'expense')
+            const total = currentMonthTxs
+                .filter(t => t.payer_id === m.id)
                 .reduce((acc, curr) => acc + Number(curr.amount), 0);
 
             return {
@@ -312,49 +322,29 @@ export default function Dashboard() {
                 total_amount: total
             };
         }).sort((a, b) => b.total_amount - a.total_amount);
-    }, [familyTransactions, members, selectedMonth]);
+    }, [groupExpenses, crossLoans, members, selectedMonth]);
     const buoniPastoBalance = useMemo(() => {
-        const bpAccountNames = ["Buoni Pasto Fabio", "Buoni pasto Fabio"];
-        const bpIncome = familyTransactions
-            .filter(t => t.type === 'income' && bpAccountNames.includes(t.accounts?.name || ""))
+        const isBp = (t: Transaction) => t.accounts?.name?.toLowerCase().includes('buoni pasto');
+        const bpIncome = transactions
+            .filter(t => t.type === 'income' && isBp(t))
             .reduce((acc, curr) => acc + Number(curr.amount), 0);
-
-        const bpExpense = familyTransactions
-            .filter(t => t.type === 'expense' && bpAccountNames.includes(t.accounts?.name || ""))
+        const bpExpense = transactions
+            .filter(t => t.type === 'expense' && isBp(t))
             .reduce((acc, curr) => acc + Number(curr.amount), 0);
         return bpIncome - bpExpense;
-    }, [familyTransactions]);
+    }, [transactions]);
 
     const dynamicBudget = useMemo(() => {
-        const currentMonthTransactions = familyTransactions.filter(t =>
-            format(new Date(t.date), "yyyy-MM") === format(selectedMonth, "yyyy-MM")
-        );
+        const monthStr = format(selectedMonth, "yyyy-MM");
 
-        const incomeSources = [
-            "Fideuram Cointestato",
-            "Fideuram condiviso",
-            "Buoni Pasto Fabio",
-            "Buoni pasto Fabio"
-        ];
-        const incomeFromSources = currentMonthTransactions
-            .filter(t => t.type === 'income' && incomeSources.includes(t.accounts?.name || ""))
+        return jointIncome
+            .filter(t => format(new Date(t.date), "yyyy-MM") === monthStr)
             .reduce((acc, curr) => acc + Number(curr.amount), 0);
-
-        const incomeFromBonus = currentMonthTransactions
-            .filter(t => t.type === 'income' && (
-                t.description?.toLowerCase().includes("bonus") ||
-                t.categories?.name?.toLowerCase().includes("bonus")
-            ))
-            .reduce((acc, curr) => acc + Number(curr.amount), 0);
-
-        return incomeFromSources + incomeFromBonus;
-    }, [familyTransactions, selectedMonth]);
+    }, [jointIncome, selectedMonth]);
 
     const categoryData = useMemo(() => {
-        const currentMonthExpenses = familyTransactions.filter(t => {
-            const d = new Date(t.date);
-            return t.type === 'expense' && d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
-        });
+        const monthStr = format(selectedMonth, "yyyy-MM");
+        const currentMonthExpenses = groupExpenses.filter(t => format(new Date(t.date), "yyyy-MM") === monthStr);
 
         const totals: Record<string, number> = {};
         currentMonthExpenses.forEach(t => {
@@ -365,24 +355,26 @@ export default function Dashboard() {
         return Object.entries(totals).map(([name, value]) => ({
             name,
             value,
-            color: '' // CategoryPieChart handles default colors
+            color: ''
         })).sort((a, b) => b.value - a.value);
-    }, [familyTransactions, selectedMonth]);
+    }, [groupExpenses, selectedMonth]);
 
     const currentMonthLabel = useMemo(() => {
         return format(selectedMonth, "MMMM yyyy", { locale: it });
     }, [selectedMonth]);
 
     const filteredTransactions = useMemo(() => {
-        if (!searchTerm) return familyTransactions.slice(0, 10);
+        const all = [...groupExpenses, ...crossLoans, ...jointIncome]
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        if (!searchTerm) return all.slice(0, 10);
         const lowerTerm = searchTerm.toLowerCase();
-        return familyTransactions.filter(tx =>
+        return all.filter(tx =>
             (tx.description?.toLowerCase().includes(lowerTerm)) ||
             (tx.categories?.name?.toLowerCase().includes(lowerTerm)) ||
             (tx.payer?.name?.toLowerCase().includes(lowerTerm)) ||
             (tx.beneficiary?.name?.toLowerCase().includes(lowerTerm))
         ).slice(0, 20);
-    }, [familyTransactions, searchTerm]);
+    }, [groupExpenses, crossLoans, jointIncome, searchTerm]);
 
     const suggestions = useMemo(() => {
         if (!searchTerm || searchTerm.length < 2) return [];
@@ -405,34 +397,38 @@ export default function Dashboard() {
 
     // --- REBALANCE CALCULATION ---
     const rebalanceData = useMemo(() => {
-        const fabio = members.find(m => m.name?.trim().toLowerCase() === 'fabio');
-        const giulia = members.find(m => m.name?.trim().toLowerCase() === 'giulia');
+        // BUG-10/BUG-6: identifica i 2 adulti via role, non per nome. Ordine deterministico per id.
+        // ASSUNZIONE "2 ADULTI": il rebalancing supporta esattamente 2 parents (slot fabio/giulia).
+        // Con 3+ parents, gli adulti oltre i primi 2 vengono ignorati: le loro spese e i loro
+        // contributi NON entrano nel calcolo. Per estendere a N adulti serve riscrivere
+        // rebalanceData/contributionStatus su una struttura per-membro, non una coppia.
+        const parents = members.filter(m => m.role === 'parent').sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        if (parents.length > 2) {
+            console.warn(`[rebalanceData] ${parents.length} parents trovati, supportati solo 2: gli altri sono ignorati nel rebalancing.`);
+        }
+        if (parents.length < 2) return null;
+        const [fabio, giulia] = parents;
 
-        if (!fabio || !giulia || familyTransactions.length === 0) return null;
+        if (groupExpenses.length === 0 && crossLoans.length === 0 && jointIncome.length === 0) return null;
 
-        // 1. Spese da conti PERSONALI per la famiglia (logica esistente)
-        const currentMonthExpenses = familyTransactions.filter(t => {
-            const tDate = new Date(t.date);
-            const isFromJointAccount = t.accounts && t.accounts.owner_id === null;
-            return t.type === 'expense' &&
-                tDate.getMonth() === selectedMonth.getMonth() &&
-                tDate.getFullYear() === selectedMonth.getFullYear() &&
-                !isFromJointAccount;
-        });
+        const monthStr = format(selectedMonth, "yyyy-MM");
+        const isInSelectedMonth = (t: Transaction) => format(new Date(t.date), "yyyy-MM") === monthStr;
 
-        // 2. Contributi verso conti cointestati (inclusi i giroconti entrata)
-        // Escludi regalo/bonus: sono soldi da fonti esterne, non contributi personali
-        const currentMonthContributions = familyTransactions.filter(t => {
-            const tDate = new Date(t.date);
-            const isToJointAccount = t.accounts && t.accounts.owner_id === null;
-            const catName = (t.categories?.name || '').toLowerCase();
-            const isRegaloOrBonus = catName.includes('regalo') || catName.includes('bonus');
-            return t.type === 'income' &&
-                tDate.getMonth() === selectedMonth.getMonth() &&
-                tDate.getFullYear() === selectedMonth.getFullYear() &&
-                isToJointAccount &&
-                !isRegaloOrBonus;
-        });
+        // 1. Spese rilevanti per il rebalancing: gruppo + cross-loans, escludendo conti joint/buoni pasto
+        // (le spese da conti joint/buoni pasto non gravano sul patrimonio personale del payer).
+        const isFromJointOrMealVoucher = (t: Transaction) =>
+            (t.accounts && t.accounts.owner_id === null) ||
+            t.accounts?.name?.toLowerCase().includes('buoni pasto');
+
+        const currentMonthExpenses = [...groupExpenses, ...crossLoans].filter(t =>
+            isInSelectedMonth(t) && !isFromJointOrMealVoucher(t)
+        );
+
+        // 2. Contributi verso conti cointestati (escluso buoni pasto: non è patrimonio personale).
+        // Income "esterno" (regalo/bonus/INPS/cashback/rimborso/assegno unico) escluso via helper.
+        const currentMonthContributions = jointIncome.filter(t =>
+            isInSelectedMonth(t) && isJointContribution(t)
+        );
 
         const childrenIds = members.filter(m => ['child', 'pet'].includes(m.role)).map(m => m.id);
         const commonExpenses = currentMonthExpenses.filter(t => !t.beneficiary_id || childrenIds.includes(t.beneficiary_id));
@@ -457,28 +453,25 @@ export default function Dashboard() {
             netBalance,
             totalActivity: fabioPaidCommon + giuliaPaidCommon + fabioPaidForGiulia + giuliaPaidForFabio + fabioContributions + giuliaContributions
         };
-    }, [familyTransactions, members, selectedMonth]);
+    }, [groupExpenses, crossLoans, jointIncome, members, selectedMonth]);
 
     const contributionStatus = useMemo(() => {
-        const currentMonthTxs = transactions.filter(t => {
-            const d = new Date(t.date);
-            return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
-        });
+        const monthStr = format(selectedMonth, "yyyy-MM");
+        const currentMonthTxs = transactions.filter(t => format(new Date(t.date), "yyyy-MM") === monthStr);
 
-        const fideuramNames = ["Fideuram Cointestato", "Fideuram condiviso"];
-        const fabio = members.find(m => m.name.trim().toLowerCase() === 'fabio');
-        const giulia = members.find(m => m.name.trim().toLowerCase() === 'giulia');
+        // Vedi nota "ASSUNZIONE 2 ADULTI" in rebalanceData: stessa limitazione qui.
+        const parents = members.filter(m => m.role === 'parent').sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        const [fabio, giulia] = parents.length >= 2 ? parents : [undefined, undefined];
 
+        // Quota = contributo personale al joint ≥600€ (esclude regalo/bonus/INPS via helper).
         const fabioPushed = currentMonthTxs.some(t =>
-            t.type === 'income' &&
-            fideuramNames.includes(t.accounts?.name || "") &&
+            isJointContribution(t) &&
             t.payer_id === fabio?.id &&
             Number(t.amount) >= 600
         );
 
         const giuliaPushed = currentMonthTxs.some(t =>
-            t.type === 'income' &&
-            fideuramNames.includes(t.accounts?.name || "") &&
+            isJointContribution(t) &&
             t.payer_id === giulia?.id &&
             Number(t.amount) >= 600
         );
@@ -490,53 +483,68 @@ export default function Dashboard() {
         if (!rebalanceData || rebalanceData.netBalance === 0) return;
 
         try {
-            const now = new Date();
             const debtor = rebalanceData.netBalance > 0 ? rebalanceData.giulia : rebalanceData.fabio;
             const creditor = rebalanceData.netBalance > 0 ? rebalanceData.fabio : rebalanceData.giulia;
-            const amount = Math.abs(rebalanceData.netBalance);
+            // Il pareggio entra in `fabioForGiulia`/`giuliaForFabio` che la formula divide per 2.
+            // Per azzerare un netBalance N serve quindi un trasferimento di 2N dal debitore al creditore.
+            const amount = Math.abs(rebalanceData.netBalance) * 2;
             const settlementCat = categories.find(c => c.name.trim().toLowerCase() === 'altro') || categories[0];
+            const debtorAccount = accounts.find((a: any) => a.owner_id === debtor.id);
+
+            if (!debtorAccount) {
+                alert("Errore: conto personale del debitore non trovato.");
+                return;
+            }
+
+            const settlementDate = endOfMonth(selectedMonth);
 
             const { error } = await supabase.from('transactions').insert({
                 payer_id: debtor.id,
                 beneficiary_id: creditor.id,
                 amount: amount,
-                description: `Pareggio Spese - ${format(now, 'MMMM yyyy', { locale: it })}`,
+                description: `Pareggio Spese - ${format(selectedMonth, 'MMMM yyyy', { locale: it })}`,
                 type: 'expense',
                 category_id: settlementCat?.id,
+                account_id: debtorAccount.id,
                 family_id: member?.family_id,
-                date: new Date().toISOString().split('T')[0]
+                date: format(settlementDate, 'yyyy-MM-dd')
             });
 
             if (error) throw error;
             fetchData();
-        } catch (err) {
+        } catch (err: any) {
             console.error("Errore pareggio:", err);
+            alert("Errore nel pareggio: " + (err?.message || String(err)));
         }
     };
 
-    const handleRecordContribution = async (memberName: string) => {
-        const member = members.find(m => m.name.trim().toLowerCase() === memberName.toLowerCase());
-        if (!member) return;
-
-        const fideuramNames = ["Fideuram Cointestato", "Fideuram condiviso"];
-        const sharedAccount = accounts.find((a: any) => fideuramNames.includes(a.name));
-        const personalAccount = accounts.find((a: any) => a.owner_id === member.id);
-
-        // Find categories by name mapping from migration
-        const catExpense = categories.find((c: any) => c.name.includes('Giroconto') && c.type === 'expense');
-        const catIncome = categories.find((c: any) => c.name.includes('Giroconto') && c.type === 'income');
-
-        const expenseCatId = catExpense?.id;
-        const incomeCatId = catIncome?.id;
-
-        if (!sharedAccount || !personalAccount || !expenseCatId || !incomeCatId) {
-            alert("Errore: Configurazione incompleta. Assicurati di aver eseguito lo script SQL 'migration_giroconto.sql' e di aver configurato i conti.");
-            return;
-        }
+    const handleRecordContribution = async (memberId: string) => {
+        // BUG-13: blocco anti doppio click
+        if (isSubmittingQuota) return;
+        setIsSubmittingQuota(true);
 
         try {
-            const now = new Date();
-            const dateStr = now.toISOString().split('T')[0];
+            const memberObj = members.find(m => m.id === memberId);
+            if (!memberObj) return;
+
+            // BUG-9: cointestato = SOLO owner_id === null
+            const sharedAccount = accounts.find((a: any) => a.owner_id === null);
+            const personalAccount = accounts.find((a: any) => a.owner_id === memberObj.id);
+
+            // BUG-12: lookup giroconto case-insensitive
+            const catExpense = categories.find((c: any) => c.name.toLowerCase().includes('giroconto') && c.type === 'expense');
+            const catIncome = categories.find((c: any) => c.name.toLowerCase().includes('giroconto') && c.type === 'income');
+
+            const expenseCatId = catExpense?.id;
+            const incomeCatId = catIncome?.id;
+
+            if (!sharedAccount || !personalAccount || !expenseCatId || !incomeCatId) {
+                alert("Errore: Configurazione incompleta. Assicurati di aver eseguito lo script SQL 'migration_giroconto.sql' e di aver configurato i conti.");
+                return;
+            }
+
+            // BUG-8: data = fine del mese visualizzato, non oggi
+            const dateStr = format(endOfMonth(selectedMonth), 'yyyy-MM-dd');
 
             const transactionsToInsert = [
                 {
@@ -544,9 +552,9 @@ export default function Dashboard() {
                     description: 'Quota Mensile Fideuram (Automatico)',
                     type: 'expense',
                     category_id: expenseCatId,
-                    payer_id: member.id,
+                    payer_id: memberObj.id,
                     account_id: personalAccount.id,
-                    family_id: member.family_id,
+                    family_id: memberObj.family_id,
                     date: dateStr
                 },
                 {
@@ -554,10 +562,10 @@ export default function Dashboard() {
                     description: 'Quota Mensile Fideuram (Automatico)',
                     type: 'income',
                     category_id: incomeCatId,
-                    payer_id: member.id,
+                    payer_id: memberObj.id,
                     beneficiary_id: null,
                     account_id: sharedAccount.id,
-                    family_id: member.family_id,
+                    family_id: memberObj.family_id,
                     date: dateStr
                 }
             ];
@@ -569,8 +577,14 @@ export default function Dashboard() {
         } catch (err: any) {
             console.error("Errore registrazione quota:", err);
             alert("Errore nella registrazione: " + err.message);
+        } finally {
+            setIsSubmittingQuota(false);
         }
     };
+
+    // Vedi nota "ASSUNZIONE 2 ADULTI" in rebalanceData.
+    const parents = members.filter(m => m.role === 'parent').sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const [parent1, parent2] = parents;
 
     return (
         <div className="space-y-12 animate-up">
@@ -613,24 +627,24 @@ export default function Dashboard() {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Quote Mensili (600€)</p>
                     <div className="flex gap-4">
                         <button
-                            onClick={() => !contributionStatus.fabio && handleRecordContribution('Fabio')}
-                            disabled={contributionStatus.fabio}
+                            onClick={() => parent1 && !contributionStatus.fabio && handleRecordContribution(parent1.id)}
+                            disabled={!parent1 || contributionStatus.fabio || isSubmittingQuota}
                             className={`flex-1 h-14 rounded-2xl flex items-center justify-center gap-2 text-xs font-black transition-all shadow-sm relative group overflow-hidden ${contributionStatus.fabio
                                 ? 'bg-emerald-500 text-white shadow-emerald-200'
                                 : 'bg-white text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-100'
                                 }`}
                         >
-                            <User size={16} /> Fabio
+                            <User size={16} /> {parent1?.name ?? '—'}
                         </button>
                         <button
-                            onClick={() => !contributionStatus.giulia && handleRecordContribution('Giulia')}
-                            disabled={contributionStatus.giulia}
+                            onClick={() => parent2 && !contributionStatus.giulia && handleRecordContribution(parent2.id)}
+                            disabled={!parent2 || contributionStatus.giulia || isSubmittingQuota}
                             className={`flex-1 h-14 rounded-2xl flex items-center justify-center gap-2 text-xs font-black transition-all shadow-sm relative group overflow-hidden ${contributionStatus.giulia
                                 ? 'bg-emerald-500 text-white shadow-emerald-200'
                                 : 'bg-white text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-100'
                                 }`}
                         >
-                            <User size={16} /> Giulia
+                            <User size={16} /> {parent2?.name ?? '—'}
                         </button>
                     </div>
                 </div>
@@ -697,7 +711,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-4">
-                        {members.filter(m => ['Fabio', 'Giulia'].includes(m.name)).map((m) => {
+                        {parents.map((m) => {
                             const memberStats = familyMemberSummary.find(s => s.member_name === m.name);
                             return (
                                 <Link
@@ -725,11 +739,11 @@ export default function Dashboard() {
                         })}
                     </div>
 
-                    {members.length > 2 && (
+                    {members.some(m => m.role !== 'parent') && (
                         <div className="mt-8 pt-8 border-t border-slate-100">
                             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Altri Membri</h4>
                             <div className="space-y-3">
-                                {members.filter(m => !['Fabio', 'Giulia'].includes(m.name)).map(m => (
+                                {members.filter(m => m.role !== 'parent').map(m => (
                                     <Link key={m.id} href={`/member/${m.id}`} className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-colors">
                                         <span className="text-sm font-bold text-slate-600">{m.name}</span>
                                         <ArrowRight size={14} className="text-slate-300" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Transaction, BankTransaction, ReconciliationResult, Account } from "@/lib/types";
@@ -38,9 +38,9 @@ export default function ReconciliationPage() {
         }
     }, [member?.family_id]);
 
-    useState(() => {
+    useEffect(() => {
         fetchAccounts();
-    });
+    }, [fetchAccounts]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
